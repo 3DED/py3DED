@@ -13,27 +13,102 @@ This script can be run from the command line with the following format:::
 """
 
 import dataclasses
-import dask
 
 import abtem.parametrizations
 import abtem.potentials.iam
 import abtem.waves
 import ase
+import dask
 import numpy as np
 from abtem import AtomsEnsemble
 from abtem.atoms import euler_to_rotation
 from abtem.bloch import BlochWaves, StructureFactor
+from abtem.core.axes import NonLinearAxis
 from abtem.core.energy import energy2wavelength
 from ase import Atoms
 
-from py3ded.config import BaseConfig, parse_arguments
-from py3ded.detector import WindowedPixelatedDetector
-from py3ded.io import read_atoms_from_zarr
-from py3ded.supercell import make_rotated_atoms_ensemble
+from py3DED.atoms import crop_atoms_to_cell, rotate_atoms
+from py3DED.config import BaseConfig, parse_arguments
+from py3DED.detector import WindowedPixelatedDetector
+from py3DED.io import read_atoms_from_zarr
 
 
 @dataclasses.dataclass
 class Config(BaseConfig):
+    """
+    Configuration object for Bloch wave and multislice simulations.
+
+    Parameters
+    ----------
+    run_mode : str, optional
+        The simulation mode to be used. Either "ms" for multislice or "bw" for Bloch wave.
+    precision : str, optional
+        The precision to be used for computations. Either "float32" or "float64".
+    fft : str, optional
+        The FFT backend to be used. Either "fftw" or "numpy".
+    task_progress : bool, optional
+        Display the progress of each task in addition to the progress of the whole computation.
+    device : str, optional
+        The device to be used for computations. Either "cpu" or "gpu".
+    enable_mps : bool, optional
+        Enable Metal Performance Shaders (MPS) for GPU computations on Apple Silicon.
+    num_workers : int, optional
+        The number of workers to be used for parallel computations.
+    store_path : str, optional
+        The path to store the output data. The path can contain placeholders for configuration values
+        that will be replaced with the actual values. Placeholders should be enclosed in curly brackets.
+    scheduler : str, optional
+        The scheduler to be used for parallel computations. Either "threads" or "processes".
+    energy : float, optional
+        The energy of the electrons in the simulation in eV.
+    unit_cell : str or Atoms
+        The unit cell to be used in the simulation. Can be a path to a CIF file or an ASE Atoms object.
+    supercell : str, optional
+        The supercell to be used in the simulation. Can be a path to a Zarr file or an ASE Atoms object.
+        The supercell may be generated using the atoms module.
+    thermal_sigma : dict or str, optional
+        The thermal sigma values to be used in the simulation. Can be a dictionary or a string of comma-separated
+        key-value pairs.
+    rotation_axis : float, optional
+        The rotation axis to be used in the simulation in degrees.
+    rotation_min : float, optional
+        The minimum rotation angle to be used in the simulation in degrees.
+    rotation_max : float, optional
+        The maximum rotation angle to be used in the simulation in degrees.
+    rotation_steps : int, optional
+        The number of rotation steps to be used in the simulation.
+    slice_thickness : float, optional
+        The slice thickness to be used in the multislice simulation in Angstroms.
+    exit_planes : int, optional
+        Save the simulation results every this many exit planes. Bloch wave results are saved at the corresponding
+        exit plane depths.
+    sampling : float, optional
+        The real space sampling to be used in the multislice simulation in Angstroms.
+    projection : str, optional
+        The potential projection integrals to be used in the multislice simulation. Either "infinite" or "finite".
+    g_max_store : float, optional
+        The maximum g value to be stored in both multislice and Bloch wave simulations.
+    integration_radius : float, optional
+        The integration radius to be used in to calculate the intensity of the diffraction spots in multislice
+        simulations in reciprocal Angstroms.
+    window_func : str, optional
+        The window function for the method. Should be one of the window functions available in
+        `scipy.signal.windows`. Default is 'hann'.
+    margin : float, optional
+        The cropping margin to be applied to the (real-space) wave functions in the WindowedPixelatedDetector
+        in the multislice simulation in Angstroms.
+    sg_max : float, optional
+        The maximum excitation error to be included in the Bloch wave simulations in reciprocal Angstroms.
+    g_max : float, optional
+        The maximum g value to be used in the Bloch wave simulation in reciprocal Angstroms.
+    centering : {'P', 'I', 'A', 'B', 'C', 'F'}, optional
+        The crystal centering to be used in the Bloch wave simulations. Either "P", "A", "B", "C", "I" or "F".
+    use_wave_eq : bool, optional
+        Use the version of the Bloch wave simulation derived from the wave equation.
+    occupancy : float, optional
+        The occupancy as a fraction used in the Bloch wave simulations. This does NOT affect the multislice simulations.
+    """
+
     run_mode: str = "ms"
 
     # Computations
@@ -44,24 +119,20 @@ class Config(BaseConfig):
     device: str = "cpu"
     enable_mps: bool = False
     num_workers: int = 8
-    store_path: str = "output/{supercell}_{run_mode}.zarr"
+    store_path: str = ""
     scheduler: str = "threads"
 
     # Experiment
     # ----------
     energy: float = 200e3
-    unit_cell: str = "structures/si.cif"
-    supercell: str = "structures/si_disk_rot5.0.zarr"
-    thermal_sigma: str = "Si,0.078"
+    unit_cell: str = ""
+    supercell: str = ""
+    thermal_sigma: dict | str = "Si,0.078"
     # Rotation
-    rotation_axis: float = 0.0  # TODO: not implemented
+    rotation_axis: float = 0.0
     rotation_min: float = 0.0
     rotation_max: float = 45.0
-    rotation_steps: int = 451
-    # Vacancies
-    seed: int = 1337
-    num_runs: int = 1  # TODO: not implemented
-    vacancies: float = 0.0
+    rotation_steps: int = 5
 
     # Multislice
     # ----------
@@ -71,7 +142,8 @@ class Config(BaseConfig):
     projection: str = "infinite"
     g_max_store: float = 4.0
     integration_radius: float = 0.01
-    margin: float = 10.
+    margin: float = 0.0
+    window_func: str = "hann"
 
     # Bloch wave
     # ----------
@@ -79,6 +151,7 @@ class Config(BaseConfig):
     g_max: float = 16.0
     centering: str = "F"
     use_wave_eq: bool = True
+    occupancy: float = 1.0
 
 
 def get_store_path(config: Config):
@@ -97,7 +170,8 @@ def get_store_path(config: Config):
     """
     config_dict = {k: v for k, v in config.__dict__.items()}
 
-    config_dict["unit_cell"] = config.unit_cell.split("/")[-1].split(".")[0]
+    if isinstance(config_dict["unit_cell"], str):
+        config_dict["unit_cell"] = config.unit_cell.split("/")[-1].split(".")[0]
 
     return config.store_path.format(**config_dict)
 
@@ -130,7 +204,9 @@ def parse_thermal_sigma(thermal_sigma: str | dict) -> dict:
     return thermal_sigma
 
 
-def make_potential(atoms_ensemble, config):
+def make_potential(config):
+    atoms_ensemble, atoms = get_atoms_ensemble(config)
+
     thermal_sigma = parse_thermal_sigma(config.thermal_sigma)
 
     parametrization = abtem.parametrizations.LobatoParametrization(
@@ -158,13 +234,13 @@ def get_x_angles(config: Config):
 
 def make_structure_factor(atoms, config: Config):
     thermal_sigma = parse_thermal_sigma(config.thermal_sigma)
-
     structure_factor = StructureFactor(
         atoms,
         g_max=config.g_max,
         parametrization="lobato",
         centering=config.centering,
         thermal_sigma=thermal_sigma,
+        occupancy=config.occupancy,
     )
 
     return structure_factor
@@ -183,47 +259,82 @@ def set_abtem_config(config: Config):
     )
 
 
-def add_vacancies(atoms, vacancies: float, seed: int):
-    if hasattr(atoms, "compute"):
-        atoms = dask.delayed(add_vacancies)(atoms, vacancies, seed)
+def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
 
-    np.random.seed(seed)
-    mask = np.random.rand(len(atoms)) > vacancies
-    atoms = atoms[mask]
-    return atoms
+    rotated_atoms = rotate_atoms(
+        atoms,
+        center="COU",
+        ai=-rotation_axis,
+        aj=rotation,
+        ak=rotation_axis,
+        axes="zxz",
+    )
+    cropped_atoms = crop_atoms_to_cell(rotated_atoms)
+    return cropped_atoms
+
+
+def make_rotated_atoms_ensemble(atoms: Atoms, config: Config):
+    func = dask.delayed(_rotate_and_crop_to_cell)
+
+    rotations = get_x_angles(config)
+
+    rotation_axis = -np.deg2rad(config.rotation_axis)
+
+    trajectory = [
+        func(atoms, rotation, rotation_axis=rotation_axis) for rotation in rotations
+    ]
+
+    axis_metadata = NonLinearAxis(label="x_rotation", units="deg", values=rotations)
+
+    ensemble = AtomsEnsemble(
+        trajectory, ensemble_mean=False, ensemble_axes_metadata=axis_metadata
+    )
+    return ensemble
 
 
 def get_atoms_ensemble(config: Config):
-    supercell = read_atoms_from_zarr(config.supercell, lazy=True)
-
-
-    angles = get_x_angles(config)
-    atoms_ensemble = make_rotated_atoms_ensemble(supercell, angles)
-    atoms = ase.io.read(config.unit_cell)
+    supercell = read_atoms_from_zarr(config.supercell, lazy=True).compute()
+    atoms_ensemble = make_rotated_atoms_ensemble(supercell, config)
+    if isinstance(config.unit_cell, str):
+        atoms = ase.io.read(config.unit_cell)
+    else:
+        atoms = config.unit_cell
     return atoms_ensemble, atoms
 
 
-def setup_multislice(
-    config: Config,
-):
+def get_zxz_rotation_matrix(rotation, rotation_axis):
+    rotations = euler_to_rotation(rotation_axis, rotation, -rotation_axis, axes="zxz")
+    return rotations
+
+
+def setup_multislice(config: Config, return_exit_wave=False):
     angles = get_x_angles(config)
-    
+
     atoms_ensemble, atoms = get_atoms_ensemble(config)
 
     pw = abtem.waves.PlaneWave(energy=config.energy)
 
-    potential = make_potential(atoms_ensemble, config)
+    potential = make_potential(config)
 
     max_angle = config.g_max_store * energy2wavelength(config.energy) * 1e3
 
     detector = WindowedPixelatedDetector(
-        max_angle=max_angle * 1.2, to_cpu=True, reciprocal_space=True, margin=config.margin
+        max_angle=max_angle * 1.2,
+        to_cpu=True,
+        reciprocal_space=True,
+        margin=config.margin,
+        window_func=config.window_func,
     )
 
     diffraction = pw.multislice(potential=potential, detectors=detector)
-    
+
+    rotation_axis = np.deg2rad(config.rotation_axis)
+
     orientation_matrices = np.array(
-        [euler_to_rotation(angle, 0, 0, axes="xzx") for angle in angles]
+        [
+            get_zxz_rotation_matrix(angle, rotation_axis=rotation_axis)
+            for angle in angles
+        ]
     )[:, None]
 
     diffraction_indexed = (
@@ -239,14 +350,10 @@ def setup_multislice(
         .crop(k_max=config.g_max_store)
     )
 
-    return diffraction_indexed
+    return diffraction_indexed[:, 1:]
 
 
-def setup_bloch_wave(
-    config: Config,
-):
-    angles = get_x_angles(config)
-
+def get_bloch_waves(config: Config):
     atoms_ensemble, atoms = get_atoms_ensemble(config)
 
     structure_factor = make_structure_factor(atoms, config)
@@ -257,10 +364,30 @@ def setup_bloch_wave(
         sg_max=config.sg_max,
         use_wave_eq=config.use_wave_eq,
     )
+    return bloch_waves
 
-    rotated = bloch_waves.rotate("x", angles)
 
-    potential = make_potential(atoms_ensemble, config)
+def setup_bloch_wave(
+    config: Config,
+):
+    angles = get_x_angles(config)
+    
+    bloch_waves = get_bloch_waves(config)
+    
+    rotation_axis = np.deg2rad(config.rotation_axis)
+
+    rotation_axis = rotation_axis.reshape(
+        1,
+    )   
+    
+    rotation_axis = rotation_axis.repeat(angles.size, axis=0)
+
+    all_angles = np.stack((rotation_axis, angles, -rotation_axis), axis=-1)
+    
+    # print(all_angles.shape)
+    rotated = bloch_waves.rotate("zxz", all_angles)
+
+    potential = make_potential(config)
 
     diffraction_bw = (
         rotated.calculate_diffraction_patterns(
@@ -270,16 +397,24 @@ def setup_bloch_wave(
         .crop(k_max=config.g_max_store)
     )
 
-    return diffraction_bw
+    diffraction_bw.axes_metadata[0].label = "x_rotation"
+    diffraction_bw.axes_metadata[0].values = tuple(angles)
+
+    return diffraction_bw[:, 1:]
 
 
-def run(config, save_to_disk=True):
+def run(config=None, save_to_disk=True):
+    if config is None:
+        config = parse_arguments(Config)
+
     set_abtem_config(config)
 
     if config.run_mode == "ms":
         output = setup_multislice(config)
-    else:
+    elif config.run_mode == "bw":
         output = setup_bloch_wave(config)
+    else:
+        raise ValueError(f"Run mode {config.run_mode} not supported")
 
     if save_to_disk:
         output.to_zarr(
@@ -290,31 +425,5 @@ def run(config, save_to_disk=True):
     return output
 
 
-def main():
-    config = parse_arguments()
-
-    angles = get_x_angles(config)
-
-    abtem.config.set(
-        {
-            "precision": config.precision,
-            "device": config.device,
-            "fft": config.fft,
-            "diagnostics.task_progress": config.task_progress,
-            "diagnostics.progress_bar": "tqdm",
-            "enable_mps": config.enable_mps,
-        }
-    )
-
-    atoms_ensemble, atoms = make_atoms(config)
-
-    if config.run_mode == "ms":
-        run_multislice(angles, atoms_ensemble, atoms, config)
-    elif config.run_mode == "bw":
-        run_bloch_wave(angles, atoms_ensemble, atoms, config)
-    else:
-        raise ValueError("Invalid run mode")
-
-
 if __name__ == "__main__":
-    main()
+    run(config=None, save_to_disk=True)

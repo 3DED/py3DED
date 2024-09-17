@@ -1,10 +1,10 @@
 import numpy as np
 from abtem.detectors import PixelatedDetector
 from abtem.waves import Waves
+from scipy.signal import windows
 
 
 class WindowedPixelatedDetector(PixelatedDetector):
-
     def __init__(
         self,
         max_angle: str | float = "valid",
@@ -13,7 +13,7 @@ class WindowedPixelatedDetector(PixelatedDetector):
         to_cpu: bool = True,
         url: str = None,
         margin: float = 0.0,
-        window: float = 0.0,
+        window_func: str = "hann",
     ):
         """
         Parameters
@@ -32,11 +32,12 @@ class WindowedPixelatedDetector(PixelatedDetector):
             The URL for the method. Default is None.
         margin : float, optional
             The margin value for the method. Default is 0.0.
-        window : float, optional
-            The window value for the method. Default is 0.0.
+        window_func : str, optional
+            The window function for the method. Should be one of the window functions
+            available in `scipy.signal.windows`. Default is 'hann'.
         """
         self._margin = margin
-        self._window = window
+        self._window_func = window_func
 
         super().__init__(
             max_angle=max_angle,
@@ -49,11 +50,11 @@ class WindowedPixelatedDetector(PixelatedDetector):
     def _crop(self, waves):
         if not self._margin:
             return waves
-
+        
         cropped = crop(
             waves,
-            offset=(0.0, self._margin),
-            extent=(waves.extent[0], waves.extent[1] - 2 * self._margin),
+            offset=(self._margin, self._margin),
+            extent=(waves.extent[0] - 2 * self._margin, waves.extent[1] - 2 * self._margin),
         )
         return cropped
 
@@ -68,6 +69,15 @@ class WindowedPixelatedDetector(PixelatedDetector):
 
     def _calculate_new_array(self, waves):
         cropped = self._crop(waves)
+
+        window_x = windows.get_window(self._window_func, cropped.shape[-2])
+        window_y = windows.get_window(self._window_func, cropped.shape[-1])
+
+        window = window_x[:, None] * window_y[None, :]
+
+        cropped = cropped.copy()
+        cropped._array = cropped._array * window
+
         return super()._calculate_new_array(cropped)
 
 

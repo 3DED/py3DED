@@ -41,7 +41,7 @@ def xarray_to_atoms(ds):
     positions = ds.atomic_positions.data
     numbers = ds.atomic_numbers.data
     cell = ds.unit_cell.data
-    atoms = ase.Atoms(numbers, positions=positions, cell=cell)
+    atoms = ase.Atoms(numbers, positions=positions, cell=cell, pbc=True)
     return atoms
 
 

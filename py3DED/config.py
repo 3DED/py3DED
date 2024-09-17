@@ -1,14 +1,14 @@
-import dataclasses
 import argparse
-from types import UnionType
-import typing
-from typing import Union, get_origin, get_args, Dict, Any
+import dataclasses
+from typing import Any, Dict
 
 
 @dataclasses.dataclass
 class BaseConfig:
-    _original_values: Dict[str, Any] = dataclasses.field(init=False, repr=False, default_factory=dict)
-    
+    _original_values: Dict[str, Any] = dataclasses.field(
+        init=False, repr=False, default_factory=dict
+    )
+
     def __enter__(self, **kwargs):
         # Store original values and update attributes with new values
         for key, value in kwargs.items():
@@ -22,7 +22,7 @@ class BaseConfig:
         for key, value in self._original_values.items():
             setattr(self, key, value)
         self._original_values.clear()
-    
+
     def ctx(self, **kwargs):
         return self.__enter__(**kwargs)
 

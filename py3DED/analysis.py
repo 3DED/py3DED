@@ -1,16 +1,19 @@
 import dataclasses
 import inspect
 
+import dask
+import dask.array as da
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from scipy.optimize import minimize
 
-from py3ded.config import BaseConfig, parse_arguments
+from py3DED.config import BaseConfig
 
 
 @dataclasses.dataclass
-class AnalysisConfig(BaseConfig):
+class Config(BaseConfig):
     g_max: float = 4.0
     include_000: bool = False
     averaging_depth: float = 10.0
@@ -158,6 +161,68 @@ def get_hkl_max_intensity_order(data, x_rotation):
     order = np.argsort(-data)
     hkl_order = data.hkl[order.data]
     return hkl_order.data
+
+
+def _scaled_r_factor(c, A, B):
+    sqrt_A = np.sqrt(A)
+    sqrt_cB = np.sqrt(c * B)
+    numerator = np.abs(sqrt_A - sqrt_cB).sum()
+    denominator = sqrt_A.sum()
+    return numerator / denominator
+
+
+def _optimize_batch(a, b):
+    initial_guess = 1
+    scales = np.zeros(a.shape[:-1])
+
+    for i in np.ndindex(scales.shape):
+        result = minimize(
+            _scaled_r_factor,
+            initial_guess,
+            args=(a[i], b[i]),
+            bounds=[(1e-6, None)],
+        )
+
+        scales[i] = result.x.item()
+
+    return scales
+
+
+def optimize_scales(
+    data1,
+    data2,
+    pbar: bool = False,
+    return_scales: bool = False,
+    return_r_factors: bool = False,
+    max_batch: int = 1,
+):
+    scales = np.zeros(data1.shape[:-1])
+
+    data1_lazy = da.from_array(data1, chunks=max_batch)
+    data2_lazy = da.from_array(data2, chunks=max_batch)
+
+    scales = da.map_blocks(
+        _optimize_batch,
+        data1_lazy,
+        data2_lazy,
+        chunks=data1_lazy.chunks[:-1],
+        drop_axis=-1,
+    )
+
+    with dask.diagnostics.ProgressBar():
+        scales = scales.compute(scheulder="single-threaded")
+
+    data1 = data1 / scales[..., None]
+
+    # output: tuple[Any, ...] = (data1,)
+
+    # if return_scales:
+    #     output += (scales,)
+
+    # if return_r_factors:
+    #     output += (r_factors,)
+
+    return data1
 
 
 def plot_diffraction_pattern(
