@@ -10,6 +10,7 @@ from abtem.atoms import euler_to_rotation, is_cell_orthogonal
 from ase import Atoms
 from ase.cell import Cell
 from numpy.typing import NDArray
+from scipy.spatial.transform import Rotation as R
 
 from py3DED.config import BaseConfig, parse_arguments
 from py3DED.io import filename_from_config, save_atoms_to_zarr
@@ -40,6 +41,7 @@ class Config(BaseConfig):
     seed : int
         The seed for the random number generator used to add vacancies.
     """
+
     atoms: str | Atoms = "structures/si.cif"
     shape: str = "disk"
     box: str | tuple[float, float, float] = "100,100,1000"
@@ -163,7 +165,8 @@ def center_of_positions_to_center_of_box(
 def make_lattice_disk(
     cell: Cell, box: tuple[float, float, float], rotation_axis: float = 0.0
 ):
-    rotation_axis = np.deg2rad(rotation_axis)
+    rotation_axis = -np.deg2rad(rotation_axis)
+    
     box = np.array(box)
 
     width = np.linalg.norm(box[:2]) + 2 * np.linalg.norm(cell)
@@ -226,22 +229,23 @@ def make_perfect_supercell(atoms, box, shape, **kwargs):
         raise ValueError(f"Shape {shape} not supported")
 
     positions = (lattice[:, None] + atoms.positions[None]).reshape(-1, 3)
-    numbers = np.repeat(atoms.numbers, len(lattice))
+    numbers = (np.ones_like(lattice[:, 0])[:, None] * atoms.numbers[None]).reshape(-1)
+    # numbers = np.repeat(atoms.numbers, len(lattice))
     atoms = ase.Atoms(numbers, positions, cell=box, pbc=True)
     return atoms
 
 
-def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
-    rotated_atoms = rotate_atoms(
-        atoms,
-        center="COU",
-        ai=-rotation_axis,
-        aj=rotation,
-        ak=rotation_axis,
-        axes="zxz",
-    )
-    cropped_atoms = crop_atoms_to_cell(rotated_atoms)
-    return cropped_atoms
+# def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
+#     rotated_atoms = rotate_atoms(
+#         atoms,
+#         center="COU",
+#         ai=-rotation_axis,
+#         aj=rotation,
+#         ak=rotation_axis,
+#         axes="zxz",
+#     )
+#     cropped_atoms = crop_atoms_to_cell(rotated_atoms)
+#     return cropped_atoms
 
 
 def add_vacancies(atoms: Atoms, vacancies: float, seed: int) -> Atoms:
@@ -276,6 +280,47 @@ def run(config: Optional[Config] = None):
     atoms = make_atoms(config)
     store_path = filename_from_config(config.store_path, config)
     save_atoms_to_zarr(store_path, atoms)
+
+
+def rotate_cube_to_face_point(initial_point, target_direction):
+    """
+    Rotate a cube such that the initial_point faces the target_direction.
+
+    Parameters:
+    initial_point (np.ndarray): The initial position of the vertex to rotate.
+    target_direction (np.ndarray): The target direction to face.
+
+    Returns:
+    np.ndarray: Euler angles (alpha, beta, gamma) in radians.
+    """
+    # Normalize the vectors
+    initial_point = initial_point / np.linalg.norm(initial_point)
+    target_direction = target_direction / np.linalg.norm(target_direction)
+
+    # Calculate the rotation matrix
+    v = np.cross(initial_point, target_direction)
+    c = np.dot(initial_point, target_direction)
+    s = np.linalg.norm(v)
+    k = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    rotation_matrix = np.eye(3) + k + k @ k * ((1 - c) / (s**2))
+
+    # Convert the rotation matrix to Euler angles
+    rotation = R.from_matrix(rotation_matrix)
+    euler_angles = rotation.as_euler("xyz", degrees=False)
+
+    return euler_angles
+
+
+# # Example usage
+# initial_point = np.array([1, 1, 1])  # Initial vertex position
+# target_direction = np.array([0, 0, 1])  # Target direction
+
+# euler_angles = rotate_cube_to_face_point(initial_point, target_direction)
+# print(f"Euler angles (radians): {euler_angles}")
+
+# # Verify the rotation
+# rotated_point = np.dot(R.from_euler("xy", euler_angles[:-1]).as_matrix(), initial_point)
+# print(f"Rotated point: {rotated_point}")
 
 
 if __name__ == "__main__":

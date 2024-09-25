@@ -200,6 +200,10 @@ def parse_thermal_sigma(thermal_sigma: str | dict) -> dict:
         keys = thermal_sigma.split(",")[::2]
         values = thermal_sigma.split(",")[1::2]
         thermal_sigma = {key: float(value) for key, value in zip(keys, values)}
+    elif not isinstance(thermal_sigma, dict):
+        raise ValueError(
+            f"Thermal sigma must be a dictionary or a string, not {type(thermal_sigma)}"
+        )
 
     return thermal_sigma
 
@@ -209,9 +213,12 @@ def make_potential(config):
 
     thermal_sigma = parse_thermal_sigma(config.thermal_sigma)
 
-    parametrization = abtem.parametrizations.LobatoParametrization(
-        sigmas={key: value * np.sqrt(3) for key, value in thermal_sigma.items()}
-    )
+    if isinstance(config.thermal_sigma, float):
+        parametrization = "lobato"
+    else:
+        parametrization = abtem.parametrizations.LobatoParametrization(
+            sigmas={key: value * np.sqrt(3) for key, value in thermal_sigma.items()}
+        )
 
     potential = abtem.potentials.iam.Potential(
         atoms_ensemble,
@@ -264,11 +271,12 @@ def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
     rotated_atoms = rotate_atoms(
         atoms,
         center="COU",
-        ai=-rotation_axis,
+        ai=rotation_axis,
         aj=rotation,
-        ak=rotation_axis,
+        ak=-rotation_axis,
         axes="zxz",
     )
+
     cropped_atoms = crop_atoms_to_cell(rotated_atoms)
     return cropped_atoms
 
@@ -278,7 +286,7 @@ def make_rotated_atoms_ensemble(atoms: Atoms, config: Config):
 
     rotations = get_x_angles(config)
 
-    rotation_axis = -np.deg2rad(config.rotation_axis)
+    rotation_axis = np.deg2rad(config.rotation_axis)
 
     trajectory = [
         func(atoms, rotation, rotation_axis=rotation_axis) for rotation in rotations
@@ -337,20 +345,18 @@ def setup_multislice(config: Config, return_exit_wave=False):
         ]
     )[:, None]
 
-    diffraction_indexed = (
-        diffraction.to_cpu()
-        .index_diffraction_spots(
-            cell=atoms,
-            orientation_matrices=orientation_matrices,
-            centering=config.centering,
-            sg_max=config.sg_max,
-            g_max=config.g_max / 2,
-            radius=config.integration_radius,
-        )
-        .crop(k_max=config.g_max_store)
+    diffraction_indexed = diffraction.to_cpu().index_diffraction_spots(
+        cell=atoms,
+        orientation_matrices=orientation_matrices,
+        centering=config.centering,
+        sg_max=config.sg_max,
+        g_max=config.g_max / 2,
+        radius=config.integration_radius,
     )
 
-    return diffraction_indexed[:, 1:]
+    cropped = diffraction_indexed.crop(k_max=config.g_max_store)
+
+    return cropped[:, 1:]
 
 
 def get_bloch_waves(config: Config):
@@ -371,22 +377,25 @@ def setup_bloch_wave(
     config: Config,
 ):
     angles = get_x_angles(config)
-    
+
     bloch_waves = get_bloch_waves(config)
-    
+
     rotation_axis = np.deg2rad(config.rotation_axis)
 
     rotation_axis = rotation_axis.reshape(
         1,
-    )   
-    
+    )
+
     rotation_axis = rotation_axis.repeat(angles.size, axis=0)
 
-    all_angles = np.stack((rotation_axis, angles, -rotation_axis), axis=-1)
-    
-    # print(all_angles.shape)
-    rotated = bloch_waves.rotate("zxz", all_angles)
+    # print(angles)
 
+    all_angles = np.stack((rotation_axis, angles, -rotation_axis), axis=-1)
+
+    rotated = bloch_waves.rotate("zxz", all_angles, degrees=False)
+    # rotated = bloch_waves.rotate(
+    #    "z", rotation_axis, "x", angles, "z", -rotation_axis, degrees=False
+    # )
     potential = make_potential(config)
 
     diffraction_bw = (
