@@ -76,8 +76,8 @@ class WindowedPixelatedDetector(PixelatedDetector):
 
         window = window_x[:, None] * window_y[None, :]
 
-        xp = get_array_module(cropped)
-        
+        xp = get_array_module(cropped.array)
+
         window = xp.asarray(window)
 
         cropped = cropped.copy()
