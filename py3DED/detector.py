@@ -1,5 +1,6 @@
 import numpy as np
 from abtem.detectors import PixelatedDetector
+from abtem.core.backend import get_array_module
 from abtem.waves import Waves
 from scipy.signal import windows
 
@@ -74,6 +75,10 @@ class WindowedPixelatedDetector(PixelatedDetector):
         window_y = windows.get_window(self._window_func, cropped.shape[-1])
 
         window = window_x[:, None] * window_y[None, :]
+
+        xp = get_array_module(cropped)
+        
+        window = xp.asarray(window)
 
         cropped = cropped.copy()
         cropped._array = cropped._array * window
