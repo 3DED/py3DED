@@ -196,6 +196,7 @@ def parse_thermal_sigma(thermal_sigma: str | dict) -> dict:
     dict
         The parsed thermal sigma as a dictionary.
     """
+
     if isinstance(thermal_sigma, str):
         keys = thermal_sigma.split(",")[::2]
         values = thermal_sigma.split(",")[1::2]
@@ -231,12 +232,7 @@ def make_potential(config):
     return potential
 
 
-def get_x_angles(config: Config):
-    angles = np.linspace(
-        config.rotation_min, config.rotation_max, config.rotation_steps
-    )
-    angles = angles / 180 * np.pi
-    return angles
+
 
 
 def make_structure_factor(atoms, config: Config):
@@ -266,19 +262,36 @@ def set_abtem_config(config: Config):
     )
 
 
-def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
+def _rotate_and_crop_to_cell(atoms, rotations=None, rotation_axes="zxz"):
+
+    if rotations is None:
+        rotations = np.array([0, 0, 0]) 
 
     rotated_atoms = rotate_atoms(
         atoms,
         center="COU",
-        ai=rotation_axis,
-        aj=rotation,
-        ak=-rotation_axis,
-        axes="zxz",
+        ai=rotations[0],
+        aj=rotations[1],
+        ak=rotations[2],
+        axes=rotation_axes,
     )
+
+    if rotated_atoms is None:
+        return None
+    
+
 
     cropped_atoms = crop_atoms_to_cell(rotated_atoms)
     return cropped_atoms
+
+
+
+def get_x_angles(config: Config):
+    angles = np.linspace(
+        config.rotation_min, config.rotation_max, config.rotation_steps
+    )
+    angles = angles / 180 * np.pi
+    return angles
 
 
 def make_rotated_atoms_ensemble(atoms: Atoms, config: Config):
@@ -286,10 +299,12 @@ def make_rotated_atoms_ensemble(atoms: Atoms, config: Config):
 
     rotations = get_x_angles(config)
 
-    rotation_axis = np.deg2rad(config.rotation_axis)
+    rotations = [(0,a,0) for a in rotations]
+
+    # rotation_axis = np.deg2rad(config.rotation_axis)
 
     trajectory = [
-        func(atoms, rotation, rotation_axis=rotation_axis) for rotation in rotations
+        func(atoms, rotation, ) for rotation in rotations
     ]
 
     axis_metadata = NonLinearAxis(label="x_rotation", units="deg", values=rotations)

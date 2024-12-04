@@ -45,7 +45,8 @@ class Config(BaseConfig):
     atoms: str | Atoms = "structures/si.cif"
     shape: str = "disk"
     box: str | tuple[float, float, float] = "100,100,1000"
-    rotation_axis: float = 0.0
+    rotation_axes: str = "zxz"
+    rotations: tuple[float, float, float] = (0.0, 0.0, 0.0)
     store_path: str = "structures/{atoms}_{shape}.zarr"
     vacancies: float = 0.0
     seed: int = 1337
@@ -163,10 +164,14 @@ def center_of_positions_to_center_of_box(
 
 
 def make_lattice_disk(
-    cell: Cell, box: tuple[float, float, float], rotation_axis: float = 0.0
+    cell: Cell,
+    box: tuple[float, float, float],
+    rotation_axes: str = "zxz",
+    rotations=(0.0, 0.0, 0.0),
 ):
-    rotation_axis = -np.deg2rad(rotation_axis)
-    
+    rotations = tuple(-np.deg2rad(a) for a in rotations)
+    # rotation_axis = -np.deg2rad(rotation_axis)
+
     box = np.array(box)
 
     width = np.linalg.norm(box[:2]) + 2 * np.linalg.norm(cell)
@@ -175,13 +180,27 @@ def make_lattice_disk(
     large_box = np.array((width, height, height))
     large_cube = cube_points(large_box)
 
-    rotated_cell = rotate_positions(cell, (0, 0, 0), rotation_axis)
+    rotated_cell = rotate_positions(
+        cell,
+        center=(0, 0, 0),
+        ai=rotations[0],
+        aj=rotations[1],
+        ak=rotations[2],
+        axes=rotation_axes,
+    )
 
     transformed_cube = transform_positions(rotated_cell, large_cube)
     reps = np.ceil(np.ptp(transformed_cube, 0)).astype(int)
 
     lattice = repeated_lattice(cell, reps)
-    lattice = rotate_positions(lattice, (0, 0, 0), -rotation_axis)
+    lattice = rotate_positions(
+        lattice,
+        center=(0, 0, 0),
+        ai=-rotations[0],
+        aj=-rotations[1],
+        ak=-rotations[2],
+        axes=rotation_axes,
+    )
 
     lattice = center_of_positions_to_center_of_box(lattice, large_box)
     lattice = lattice[mask_box(lattice, large_box)]
@@ -191,7 +210,14 @@ def make_lattice_disk(
 
     shift = cell.sum(0) / 2
     lattice = center_of_positions_to_center_of_box(lattice, box)
-    lattice = rotate_positions(lattice, box / 2, rotation_axis)
+    lattice = rotate_positions(
+        lattice,
+        center=tuple(L / 2 for L in box),
+        ai=rotations[0],
+        aj=rotations[1],
+        ak=rotations[2],
+        axes=rotation_axes,
+    )
     lattice = lattice - shift
     return lattice
 
@@ -207,7 +233,7 @@ def make_lattice_ball(cell, box):
     cube = cube_points(L)
 
     transformed_cube = transform_positions(cell, cube)
-    reps = np.ceil(transformed_cube.ptp(0)).astype(int)
+    reps = np.ceil(np.ptp(transformed_cube, 0)).astype(int)
 
     lattice = repeated_lattice(cell, reps)
 
@@ -231,7 +257,18 @@ def make_perfect_supercell(atoms, box, shape, **kwargs):
     positions = (lattice[:, None] + atoms.positions[None]).reshape(-1, 3)
     numbers = (np.ones_like(lattice[:, 0])[:, None] * atoms.numbers[None]).reshape(-1)
     # numbers = np.repeat(atoms.numbers, len(lattice))
+
+    positions = rotate_positions(
+        positions,
+        center=tuple(L / 2 for L in box),
+        ai=kwargs["rotations"][0],
+        aj=kwargs["rotations"][1],
+        ak=kwargs["rotations"][2],
+        axes=kwargs["rotation_axes"],
+    )
+
     atoms = ase.Atoms(numbers, positions, cell=box, pbc=True)
+
     return atoms
 
 
@@ -267,7 +304,8 @@ def make_atoms(config: Optional[Config] = None):
     else:
         atoms = config.atoms
     shape = config.shape
-    kwargs = {"rotation_axis": config.rotation_axis}
+    # kwargs = {"rotation_axis": config.rotation_axis}
+    kwargs = {"rotation_axes": config.rotation_axes, "rotations": config.rotations}
     atoms = make_perfect_supercell(atoms, box, shape, **kwargs)
     atoms = add_vacancies(atoms, config.vacancies, config.seed)
     return atoms
