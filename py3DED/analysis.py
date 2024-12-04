@@ -1,4 +1,4 @@
-x$import dataclasses
+import dataclasses
 import inspect
 
 import dask

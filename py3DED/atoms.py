@@ -258,13 +258,21 @@ def make_perfect_supercell(atoms, box, shape, **kwargs):
     numbers = (np.ones_like(lattice[:, 0])[:, None] * atoms.numbers[None]).reshape(-1)
     # numbers = np.repeat(atoms.numbers, len(lattice))
 
+    rotations = kwargs["rotations"]
+
+    if isinstance(rotations, str):
+        rotations = rotations.split(",")
+        rotations = tuple(float(r) for r in rotations)
+
+    rotation_axes = kwargs["rotation_axes"]
+
     positions = rotate_positions(
         positions,
         center=tuple(L / 2 for L in box),
-        ai=kwargs["rotations"][0],
-        aj=kwargs["rotations"][1],
-        ak=kwargs["rotations"][2],
-        axes=kwargs["rotation_axes"],
+        ai=rotations[0],
+        aj=rotations[1],
+        ak=rotations[2],
+        axes=rotation_axes,
     )
 
     atoms = ase.Atoms(numbers, positions, cell=box, pbc=True)
