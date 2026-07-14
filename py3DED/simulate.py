@@ -8,7 +8,7 @@ Usage
 -----
 This script can be run from the command line with the following format:::
 
-    python simulate_single_axis.py --run_mode "ms" --num_workers 8 --vacancies 0.01
+    python simulate.py --run_mode "ms" --num_workers 8 --vacancies 0.01
 
 """
 
@@ -217,7 +217,8 @@ def make_potential(config):
         parametrization = "lobato"
     else:
         parametrization = abtem.parametrizations.LobatoParametrization(
-            sigmas={key: value * np.sqrt(3) for key, value in thermal_sigma.items()}
+            sigmas={key: value for key, value in thermal_sigma.items()}
+            #sigmas={key: value * np.sqrt(3) for key, value in thermal_sigma.items()}
         )
 
     potential = abtem.potentials.iam.Potential(
@@ -241,6 +242,14 @@ def get_x_angles(config: Config):
 
 def make_structure_factor(atoms, config: Config):
     thermal_sigma = parse_thermal_sigma(config.thermal_sigma)
+    
+    # In abTEM, the structure factor is calculated as the complex conjugate
+    # of the structure factor that is used in crystallography.
+    # This inconsistency will be resolved in future versions.
+    # This is a temporary workaround:    
+       
+    atoms.set_positions( -atoms.positions )
+    
     structure_factor = StructureFactor(
         atoms,
         g_max=config.g_max,
@@ -249,7 +258,7 @@ def make_structure_factor(atoms, config: Config):
         thermal_sigma=thermal_sigma,
         occupancy=config.occupancy,
     )
-
+    
     return structure_factor
 
 
