@@ -23,7 +23,8 @@ setup_analysis = {
 }
 s = setup_analysis
 
-logger.info(abtem.__file__)
+#logger.info(abtem.__file__)
+print(abtem.__file__)
 #print(py3DED.__file__)
 
 
@@ -46,7 +47,7 @@ by Jacob Madsen, Małgorzata Katarzyna Cabaj, Paul Klar
 ##### Input file as argument
 #####
 
-logger.info(datetime.now().strftime('%Y%m%d-%H%M%S'))
+print(datetime.now().strftime('%Y%m%d-%H%M%S'))
 
 # check program call
 if len(call_arguments) == 2:
@@ -116,6 +117,8 @@ def setup_logger(logfile: Path) -> logging.Logger:
 logfile = export_base / 'analyse.log'
 logger = setup_logger(logfile)
 
+logger.info(datetime.now().strftime('%Y%m%d-%H%M%S'))
+
 
 def log(*args, sep=' ', end='\n'):
     message = sep.join(str(arg) for arg in args)
@@ -135,12 +138,12 @@ logger.info(file_bw)
 logger.info("Reading BW data ... ")
 data_bw = abtem.from_zarr(file_bw).to_data_array() #.compute()
 logger.info("done.")
-logger.info()
+logger.info("")
 logger.info(file_ms)
 logger.info("Reading MS data ... ")
 data_ms = abtem.from_zarr(file_ms).to_data_array() #.compute()
 logger.info("done.")
-logger.info()
+logger.info("")
 
 # output folder
 logger.info('Output folder:')
@@ -148,20 +151,20 @@ logger.info(export_base.resolve())
 
 # figures
 if s['save_images']:
-    print('Images will be saved.')
+    logger.info('Images will be saved.')
 
-logger.info()
+logger.info("")
 
 # check basic data parameters
 sep()
 logger.info('Check match of xarray coordinates:')
 align = False
 for k in ('hkl', 'z', 'x_rotation'):
-    print(f'{k:>16} : ', end='')
+    logger.info(f'{k:>16} : ')
     if set(data_bw[k].data) == set(data_ms[k].data):
-        print(f'OK.   BW / MS: {len(data_bw[k]):6d} / {len(data_ms[k]):<6d}')
+        logger.info(f'OK.   BW / MS: {len(data_bw[k]):6d} / {len(data_ms[k]):<6d}')
     else:
-        print(f'not OK !!!   BW / MS: {len(data_bw[k]):6d} / {len(data_ms[k]):6d}')
+        logger.info(f'not OK !!!   BW / MS: {len(data_bw[k]):6d} / {len(data_ms[k]):6d}')
         align = True
         
 
@@ -174,13 +177,13 @@ if align:
 for data in (data_bw, data_ms):
     # check for duplicate hkl values
     if len(data['hkl'].data) != len(set(data['hkl'].data)):
-        print('!!! There are duplicate hkl indices.')
+        logger.info('!!! There are duplicate hkl indices.')
 
 # filter out reflections via resolution filter
 if s['g_max_limit'] and s['g_max_limit'] > 0:
     sep()
-    print('Resolution filter:')
-    print('gmax limit:                ', f"{s['g_max_limit']:.2f}")    
+    logger.info('Resolution filter:')
+    logger.info(f"gmax limit:                {s['g_max_limit']:.2f}")    
 
     N_hkl_old = len(data_bw['hkl'])
     
@@ -190,11 +193,11 @@ if s['g_max_limit'] and s['g_max_limit'] > 0:
     N_hkl_new = len(data_bw['hkl'])
 
     if not np.all(data_bw['hkl'] == data_ms['hkl']):
-        print("!!! hkl indices of BW and MS are not identical!")
+        logger.info("!!! hkl indices of BW and MS are not identical!")
     
-    print('Reflections in data:       ', N_hkl_old)
-    print('Reflections filtered out:  ', N_hkl_old - N_hkl_new)
-    print('Reflections kept:          ', N_hkl_new)
+    logger.info(f'Reflections in data:       {N_hkl_old}')
+    logger.info(f'Reflections filtered out:  {N_hkl_old - N_hkl_new}')
+    logger.info(f'Reflections kept:          {N_hkl_new}')
 
 sep()
 # now things are faster when precomputing (decompressing?) the data    
@@ -207,8 +210,8 @@ data_ms = data_ms.compute()
 # filter out weakest reflections
 if s['tolerance']:
     sep()
-    print('Intensity tolerance filter:')
-    print('Intensity threshold:       ', f"{s['tolerance']:.1E}")    
+    logger.info('Intensity tolerance filter:')
+    logger.info(f"Intensity threshold:       {s['tolerance']:.1E}")    
     
     # strongest intensity along alpha, averaged by z
     # peak value of each z-averaged rocking curve, use BW as reference
@@ -221,14 +224,14 @@ if s['tolerance']:
     N_hkl_old = len(max_bw)
     N_hkl_new = np.count_nonzero(hkl_mask)
     
-    print('Reflections in data:       ', N_hkl_old)
-    print('Reflections filtered out:  ', N_hkl_old - N_hkl_new)
-    print('Reflections kept:          ', N_hkl_new)
+    logger.info(f'Reflections in data:       {N_hkl_old}')
+    logger.info(f'Reflections filtered out:  {N_hkl_old - N_hkl_new}')
+    logger.info(f'Reflections kept:          {N_hkl_new}')
 
 # scale frames
 if s['scale']:
     sep()
-    print(' ... scaling ... ')
+    logger.info(' ... scaling ... ')
     
     # numpy arrays
     dat1 = data_ms.data
@@ -236,24 +239,24 @@ if s['scale']:
 
     N_x, N_z, N_hkl = dat1.shape
     
-    print("    SCALE                                 DEVIATION ** 2")
-    print('  #    min    max   mean  sigma           sum          mean       sigma       Nopt    step')
+    logger.info("    SCALE                                 DEVIATION ** 2")
+    logger.info('  #    min    max   mean  sigma           sum          mean       sigma       Nopt    step')
 
     # scales based on 000 and # initial differences squared
     s000 = (dat2[:,:,0] / dat1[:,:,0]).reshape(N_x, N_z, 1)  
     d000 = np.sum( (dat1*s000 - dat2)**2, axis=2 )   
-    print(f'    {s000.min():6.3f} {s000.max():6.3f} {s000.mean():6.3f} {s000.std():6.3f}    {d000.sum():10.4f}    {d000.mean():10.6f}  {d000.std():10.6f} {N_x*N_z:10d} based on 000')        
+    logger.info(f'    {s000.min():6.3f} {s000.max():6.3f} {s000.mean():6.3f} {s000.std():6.3f}    {d000.sum():10.4f}    {d000.mean():10.6f}  {d000.std():10.6f} {N_x*N_z:10d} based on 000')        
     
     # expected scales from Hann window and # initial differences squared
     s_hann = np.ones([N_x, N_z, 1]) * (8/3)**2
     d_hann = np.sum( (dat1*s_hann - dat2)**2, axis=2 )   
-    print(f'    {s_hann.min():6.3f} {s_hann.max():6.3f} {s_hann.mean():6.3f} {s_hann.std():6.3f}    {d_hann.sum():10.4f}    {d_hann.mean():10.6f}  {d_hann.std():10.6f} {N_x*N_z:10d} based on (8/3)**2')
+    logger.info(f'    {s_hann.min():6.3f} {s_hann.max():6.3f} {s_hann.mean():6.3f} {s_hann.std():6.3f}    {d_hann.sum():10.4f}    {d_hann.mean():10.6f}  {d_hann.std():10.6f} {N_x*N_z:10d} based on (8/3)**2')
     
     scale_factors = s_hann
     
     if s['scale'] == '000':
         #s000 = scale_factors = data_bw.sel(hkl='0 0 0') / data_ms.sel(hkl='0 0 0')
-        print('Scale factors based on intensnity ratio of 000 from BW and MS.')
+        logger.info('Scale factors based on intensity ratio of 000 from BW and MS.')
         scale_factors = s000
     elif s['scale'].lower() == 'hann':
         
@@ -301,7 +304,7 @@ if s['scale']:
         
             N_update = np.count_nonzero(mask)
         
-            print(f'{i:3d} {sn.min():6.3f} {sn.max():6.3f} {sn.mean():6.3f} {sn.std():6.3f}    {dn.sum():10.4f}    {dn.mean():10.6f}  {dn.std():10.6f} {N_update:10}   {step_factor:.3f}')
+            logger.info(f'{i:3d} {sn.min():6.3f} {sn.max():6.3f} {sn.mean():6.3f} {sn.std():6.3f}    {dn.sum():10.4f}    {dn.mean():10.6f}  {dn.std():10.6f} {N_update:10}   {step_factor:.3f}')
     
             # update step factor
             if i%10 == 0 and step_factor > step_factor_min:
@@ -317,12 +320,12 @@ if s['scale']:
             sn = np.abs(sn)
 
         scale_factors = sn
-        print(f'DONE. {time()-t0:.1f} seconds')
+        logger.info(f'DONE. {time()-t0:.1f} seconds')
 
         # scale factors determined
-        print('Scale factors determined by minimising squared differences based on simple Newton method.')  
+        logger.info('Scale factors determined by minimising squared differences based on simple Newton method.')  
         
-    print('Applying scale factors to MS data.')
+    logger.info('Applying scale factors to MS data.')
 
     #apply scale factors
     data_ms *= scale_factors
@@ -358,7 +361,7 @@ if s['scale']:
 # z averaging
 if s['averaging_depth']:
     sep()
-    print('z-smoothing of intensities')
+    logger.info('z-smoothing of intensities')
     # calculate rolling average of intensities considering intensities
     # from neighbouring thicknesses
     dz = ( data_bw.z[1] - data_bw.z[0] ).data
@@ -374,7 +377,7 @@ if s['averaging_depth']:
     data_bw = data_bw.isel(z=slice(N_averaging_window-1, None))
     data_ms = data_ms.isel(z=slice(N_averaging_window-1, None))
 
-    print('Intensities were z-smoothed.')
+    logger.info('Intensities were z-smoothed.')
     print(N_averaging_window, 'values were used for a rolling average.')
     print('The first', N_averaging_window - 1, 'z coordinates were removed.')
 
@@ -382,7 +385,7 @@ sep()
 logger.info('Coordinates in final data sets:')
 logger.info('Dimension           N          1st           Last')
 for dim, N, f, unit in zip(data_bw.dims, data_bw.shape, (">12.4f", ">12.1f", ">12"), ("rad", "Å", "")):
-    print(f'{dim:12} {N:8} {data_bw[dim].data[0]:{f}}   {data_bw[dim].data[-1]:{f}}   {unit}')
+    logger.info(f'{dim:12} {N:8} {data_bw[dim].data[0]:{f}}   {data_bw[dim].data[-1]:{f}}   {unit}')
 
 N_x, N_z, N_hkl = data_bw.shape
 
@@ -399,14 +402,14 @@ sep()
 logger.info("Integrated intensity at last z:")
 for label, data in zip(('BW','MS'),(int_bw, int_ms)):
     integrated_intensity = float(data.isel(z=-1).sum(dim='hkl') / N_x )
-    print(label, f"{integrated_intensity:8.2%}")
-print()    
+    logger.info(f"{label} {integrated_intensity:8.2%}")
+logger.info("\n")
 
 logger.info("Scattered intensity at last z:")
 for label, data in zip(('BW','MS'),(int_bw, int_ms)):
     scattered_intensity = float(data.isel(z=-1).drop_sel(hkl='0 0 0').sum(dim='hkl') / N_x ) 
-    print(label, f"{scattered_intensity:8.2%}")
-print()    
+    logger.info(f"{label} {scattered_intensity:8.2%}")
+logger.info("\n")  
 
 sep()
 
