@@ -27,7 +27,7 @@ Activate the new environment (Windows 7/10/11):
 
 You can install py3DED using `pip`:
 ```sh
-pip install py3DED
+pip install git+https://github.com/3DED/py3DED.git
 ```
 
 ## GPU-support
