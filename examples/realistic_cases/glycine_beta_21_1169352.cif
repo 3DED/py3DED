@@ -1,0 +1,41 @@
+
+#======================================================================
+# CRYSTAL DATA
+#----------------------------------------------------------------------
+data_VESTA_phase_1
+
+_chemical_name_common                  'Teaching Subset: Fundamental Chemistry'
+_cell_length_a                         5.077000
+_cell_length_b                         6.268000
+_cell_length_c                         5.380000
+_cell_angle_alpha                      90.000000
+_cell_angle_beta                       113.199997
+_cell_angle_gamma                      90.000000
+_cell_volume                           157.361299
+_space_group_name_H-M_alt              'P 21'
+_space_group_IT_number                 4
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+   '-x, y+1/2, -z'
+
+loop_
+   _atom_site_label
+   _atom_site_occupancy
+   _atom_site_fract_x
+   _atom_site_fract_y
+   _atom_site_fract_z
+   _atom_site_adp_type
+   _atom_site_U_iso_or_equiv
+   _atom_site_type_symbol
+   C1         1.0     0.137800     0.053200     0.063300    Uiso  0.010000 C
+   C2         1.0     0.114500     0.071900    -0.226500    Uiso  0.010000 C
+   H1         1.0     0.540000     0.012000    -0.135000    Uiso  0.010000 H
+   H2         1.0     0.340000    -0.031000    -0.449000    Uiso  0.010000 H
+   H3         1.0     0.337000    -0.203000    -0.216000    Uiso  0.010000 H
+   H4         1.0     0.125000     0.241000    -0.274000    Uiso  0.010000 H
+   H5         1.0    -0.091000     0.008000    -0.362000    Uiso  0.010000 H
+   N1         1.0     0.352200    -0.044000    -0.261900    Uiso  0.010000 N
+   O1         1.0     0.377200     0.027000     0.242000    Uiso  0.010000 O
+   O2         1.0    -0.089600     0.077300     0.097000    Uiso  0.010000 O

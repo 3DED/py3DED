@@ -1,0 +1,36 @@
+
+#======================================================================
+# CRYSTAL DATA
+#----------------------------------------------------------------------
+data_VESTA_phase_1
+
+_chemical_name_common                  'Zr O2'
+_cell_length_a                         5.150500
+_cell_length_b                         5.211600
+_cell_length_c                         5.317300
+_cell_angle_alpha                      90.000000
+_cell_angle_beta                       99.230003
+_cell_angle_gamma                      90.000000
+_cell_volume                           140.880797
+_space_group_name_H-M_alt              'P 21/c'
+_space_group_IT_number                 14
+
+loop_
+_space_group_symop_operation_xyz
+   'x, y, z'
+   '-x, -y, -z'
+   '-x, y+1/2, -z+1/2'
+   'x, -y+1/2, z+1/2'
+
+loop_
+   _atom_site_label
+   _atom_site_occupancy
+   _atom_site_fract_x
+   _atom_site_fract_y
+   _atom_site_fract_z
+   _atom_site_adp_type
+   _atom_site_U_iso_or_equiv
+   _atom_site_type_symbol
+   Zr         1.0     0.275400     0.039500     0.208300    Uiso  0.004180 Zr
+   O1         1.0     0.070000     0.331700     0.344700    Uiso  0.006970 O
+   O2         1.0     0.449600     0.756900     0.479200    Uiso  0.005830 O

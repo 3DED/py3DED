@@ -1,0 +1,77 @@
+data_global
+_chemical_name_mineral 'Kyanite'
+loop_
+_publ_author_name
+'Winter J K'
+'Ghose S'
+_journal_name_full 'American Mineralogist'
+_journal_volume 64 
+_journal_year 1979
+_journal_page_first 573
+_journal_page_last 586
+_publ_section_title
+;
+ Thermal expansion and high-temperature crystal chemistry of the Al2SiO5 polymorphs
+ T = 25 deg C
+;
+_database_code_amcsd 0000733
+_chemical_formula_sum 'Al2 Si O5'
+_cell_length_a 7.1262
+_cell_length_b 7.8520
+_cell_length_c 5.5724
+_cell_angle_alpha 89.99
+_cell_angle_beta 101.11
+_cell_angle_gamma 106.03
+_cell_volume 293.598
+_exptl_crystal_density_diffrn      3.666
+_symmetry_space_group_name_H-M 'P -1'
+loop_
+_space_group_symop_operation_xyz
+  'x,y,z'
+  '-x,-y,-z'
+loop_
+_atom_site_label
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Al1   0.32540   0.70400   0.45820
+Al2   0.29740   0.69890   0.95050
+Al3   0.09980   0.38620   0.64030
+Al4   0.11200   0.91750   0.16490
+Si1   0.29620   0.06490   0.70660
+Si2   0.29100   0.33170   0.18920
+O1   0.10950   0.14680   0.12880
+O2   0.12300   0.68560   0.18120
+O3   0.27470   0.45450   0.95470
+O4   0.28310   0.93540   0.93530
+O5   0.10840   0.15200   0.66690
+O6   0.12190   0.63070   0.63890
+O7   0.28220   0.44530   0.42880
+O8   0.29150   0.94670   0.46590
+O9   0.50080   0.27490   0.24400
+O10   0.50150   0.23120   0.75530
+loop_
+_atom_site_aniso_label
+_atom_site_aniso_U_11
+_atom_site_aniso_U_22
+_atom_site_aniso_U_33
+_atom_site_aniso_U_12
+_atom_site_aniso_U_13
+_atom_site_aniso_U_23
+Al1 0.00297 0.00575 0.00649 0.00179 -0.00093 0.00021
+Al2 0.00433 0.00460 0.00679 0.00231 -0.00093 -0.00063
+Al3 0.00388 0.00431 0.00755 0.00205 -0.00074 0.00000
+Al4 0.00411 0.00431 0.00755 0.00205 -0.00074 0.00042
+Si1 0.00274 0.00374 0.00664 0.00179 -0.00074 0.00000
+Si2 0.00251 0.00403 0.00604 0.00179 -0.00130 -0.00021
+O1 0.00502 0.00489 0.00906 0.00179 -0.00130 -0.00042
+O2 0.00411 0.00518 0.00664 0.00154 -0.00111 0.00021
+O3 0.00547 0.00575 0.00770 0.00205 -0.00093 0.00021
+O4 0.00593 0.00489 0.00815 0.00256 0.00019 0.00104
+O5 0.00570 0.00546 0.00770 0.00282 0.00000 0.00125
+O6 0.00433 0.00546 0.00725 0.00179 -0.00167 -0.00104
+O7 0.00616 0.00546 0.00815 0.00231 -0.00037 -0.00042
+O8 0.00593 0.00662 0.00710 0.00333 -0.00056 -0.00042
+O9 0.00525 0.00633 0.00770 0.00333 -0.00093 0.00021
+O10 0.00456 0.00575 0.00830 0.00154 -0.00074 -0.00042
+

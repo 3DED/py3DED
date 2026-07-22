@@ -1,0 +1,116 @@
+
+#(C) 2024 by FIZ Karlsruhe - Leibniz Institute for Information Infrastructure.  All rights reserved.
+data_19796-ICSD
+_database_code_ICSD 19796
+_audit_creation_date 2021-08-01
+_chemical_name_common 'Strontium titanate'
+_chemical_formula_structural 'Sr Ti O3'
+_chemical_formula_sum 'O3 Sr1 Ti1'
+_chemical_name_structure_type Perovskite#CaTiO3
+_exptl_crystal_density_diffrn 5.11
+_diffrn_ambient_temperature 290.
+_citation_title
+
+;
+Neutron total scattering studies of group II titanates (ATiO$_3$, A$^{2+}$ =
+Mg, Ca, Sr, Ba)
+;
+loop_
+_citation_id
+_citation_journal_full
+_citation_year
+_citation_journal_volume
+_citation_page_first
+_citation_page_last
+_citation_journal_id_ASTM
+primary 'Scientific Reports' 2020 10 1 10 SRCEC3
+loop_
+_citation_author_citation_id
+_citation_author_name
+primary 'Culbertson, Charles M.'
+primary 'Flak, Alexander T.'
+primary 'Yatskin, Michael'
+primary 'Cheong, Paul H.-Y.'
+primary 'Cann, David P.'
+primary 'Dolgos, Michelle R.'
+_cell_length_a 3.9067(9)
+_cell_length_b 3.9067(9)
+_cell_length_c 3.9067(9)
+_cell_angle_alpha 90.
+_cell_angle_beta 90.
+_cell_angle_gamma 90.
+_cell_volume 59.63
+_cell_formula_units_Z 1
+_space_group_name_H-M_alt 'P m -3 m'
+_space_group_IT_number 221
+loop_
+_space_group_symop_id
+_space_group_symop_operation_xyz
+1 'z, y, -x'
+2 'y, x, -z'
+3 'x, z, -y'
+4 'z, x, -y'
+5 'y, z, -x'
+6 'x, y, -z'
+7 'z, -y, x'
+8 'y, -x, z'
+9 'x, -z, y'
+10 'z, -x, y'
+11 'y, -z, x'
+12 'x, -y, z'
+13 '-z, y, x'
+14 '-y, x, z'
+15 '-x, z, y'
+16 '-z, x, y'
+17 '-y, z, x'
+18 '-x, y, z'
+19 '-z, -y, -x'
+20 '-y, -x, -z'
+21 '-x, -z, -y'
+22 '-z, -x, -y'
+23 '-y, -z, -x'
+24 '-x, -y, -z'
+25 '-z, -y, x'
+26 '-y, -x, z'
+27 '-x, -z, y'
+28 '-z, -x, y'
+29 '-y, -z, x'
+30 '-x, -y, z'
+31 '-z, y, -x'
+32 '-y, x, -z'
+33 '-x, z, -y'
+34 '-z, x, -y'
+35 '-y, z, -x'
+36 '-x, y, -z'
+37 'z, -y, -x'
+38 'y, -x, -z'
+39 'x, -z, -y'
+40 'z, -x, -y'
+41 'y, -z, -x'
+42 'x, -y, -z'
+43 'z, y, x'
+44 'y, x, z'
+45 'x, z, y'
+46 'z, x, y'
+47 'y, z, x'
+48 'x, y, z'
+loop_
+_atom_type_symbol
+_atom_type_oxidation_number
+Sr2+ 2
+Ti4+ 4
+O2- -2
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_symmetry_multiplicity
+_atom_site_Wyckoff_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_B_iso_or_equiv
+_atom_site_occupancy
+Sr1 Sr2+ 1 a 0 0 0 0.506(4) 1.
+Ti1 Ti4+ 1 b 0.5 0.5 0.5 0.396(1) 1.
+O1 O2- 3 c 0.5 0.5 0 0.637(8) 1.
+#End of TTdata_19796-ICSD
