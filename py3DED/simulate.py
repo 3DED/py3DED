@@ -18,16 +18,14 @@ import abtem.parametrizations
 import abtem.potentials.iam
 import abtem.waves
 import ase
-import dask
 import numpy as np
-from abtem import AtomsEnsemble
-from abtem.atoms import euler_to_rotation
 from abtem.bloch import BlochWaves, StructureFactor
-from abtem.core.axes import NonLinearAxis
 from abtem.core.energy import energy2wavelength
-from ase import Atoms
+from abtem.rotation_series import (
+    rotated_atoms_ensemble,
+    rotation_series_orientation_matrices,
+)
 
-from py3DED.atoms import crop_atoms_to_cell, rotate_atoms
 from py3DED.config import BaseConfig, parse_arguments
 from py3DED.detector import WindowedPixelatedDetector
 from py3DED.io import read_atoms_from_zarr
@@ -275,43 +273,12 @@ def set_abtem_config(config: Config):
     )
 
 
-def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
-
-    rotated_atoms = rotate_atoms(
-        atoms,
-        center="COU",
-        ai=rotation_axis,
-        aj=rotation,
-        ak=-rotation_axis,
-        axes="zxz",
-    )
-
-    cropped_atoms = crop_atoms_to_cell(rotated_atoms)
-    return cropped_atoms
-
-
-def make_rotated_atoms_ensemble(atoms: Atoms, config: Config):
-    func = dask.delayed(_rotate_and_crop_to_cell)
-
-    rotations = get_x_angles(config)
-
-    rotation_axis = np.deg2rad(config.rotation_axis)
-
-    trajectory = [
-        func(atoms, rotation, rotation_axis=rotation_axis) for rotation in rotations
-    ]
-
-    axis_metadata = NonLinearAxis(label="x_rotation", units="deg", values=rotations)
-
-    ensemble = AtomsEnsemble(
-        trajectory, ensemble_mean=False, ensemble_axes_metadata=axis_metadata
-    )
-    return ensemble
-
-
 def get_atoms_ensemble(config: Config):
     supercell = read_atoms_from_zarr(config.supercell, lazy=True).compute()
-    atoms_ensemble = make_rotated_atoms_ensemble(supercell, config)
+    angles_deg = np.rad2deg(get_x_angles(config))
+    atoms_ensemble = rotated_atoms_ensemble(
+        supercell, angles_deg, rotation_axis=config.rotation_axis
+    )
     if isinstance(config.unit_cell, str):
         atoms = ase.io.read(config.unit_cell)
     else:
@@ -319,14 +286,7 @@ def get_atoms_ensemble(config: Config):
     return atoms_ensemble, atoms
 
 
-def get_zxz_rotation_matrix(rotation, rotation_axis):
-    rotations = euler_to_rotation(rotation_axis, rotation, -rotation_axis, axes="zxz")
-    return rotations
-
-
 def setup_multislice(config: Config, return_exit_wave=False):
-    angles = get_x_angles(config)
-
     atoms_ensemble, atoms = get_atoms_ensemble(config)
 
     pw = abtem.waves.PlaneWave(energy=config.energy)
@@ -345,13 +305,9 @@ def setup_multislice(config: Config, return_exit_wave=False):
 
     diffraction = pw.multislice(potential=potential, detectors=detector)
 
-    rotation_axis = np.deg2rad(config.rotation_axis)
-
-    orientation_matrices = np.array(
-        [
-            get_zxz_rotation_matrix(angle, rotation_axis=rotation_axis)
-            for angle in angles
-        ]
+    angles_deg = np.rad2deg(get_x_angles(config))
+    orientation_matrices = rotation_series_orientation_matrices(
+        angles_deg, rotation_axis=config.rotation_axis
     )[:, None]
 
     diffraction_indexed = diffraction.to_cpu().index_diffraction_spots(
@@ -415,8 +371,14 @@ def setup_bloch_wave(
         .crop(k_max=config.g_max_store)
     )
 
+    # Stored in degrees, matching the "deg" units on this same axis in
+    # get_atoms_ensemble()'s multislice-side AtomsEnsemble (abtem.rotation_series
+    # .rotated_atoms_ensemble) -- both used to store radians under a "deg" label
+    # (harmless on its own, since nothing read the values back), but now that
+    # the multislice side stores actual degrees, leaving this one in radians
+    # would make the two sides' x_rotation coordinates fail to align.
     diffraction_bw.axes_metadata[0].label = "x_rotation"
-    diffraction_bw.axes_metadata[0].values = tuple(angles)
+    diffraction_bw.axes_metadata[0].values = tuple(np.rad2deg(angles))
 
     return diffraction_bw[:, 1:]
 
