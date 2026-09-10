@@ -37,8 +37,13 @@ class WindowedPixelatedDetector(PixelatedDetector):
             The window function for the method. Should be one of the window functions
             available in `scipy.signal.windows`. Default is 'hann'.
         """
-        self._margin = margin
-        self._window_func = window_func
+        # Stored under a py3DED-specific name, not self._margin/self._window_func:
+        # newer abTEM versions add margin/window_func directly to
+        # PixelatedDetector.__init__, and since that super().__init__() call
+        # below doesn't forward them, it would otherwise reset these right back
+        # to its own defaults immediately after they're set here.
+        self._py3ded_margin = margin
+        self._py3ded_window_func = window_func
 
         super().__init__(
             max_angle=max_angle,
@@ -49,13 +54,13 @@ class WindowedPixelatedDetector(PixelatedDetector):
         )
 
     def _crop(self, waves):
-        if not self._margin:
+        if not self._py3ded_margin:
             return waves
-        
+
         cropped = crop(
             waves,
-            offset=(self._margin, self._margin),
-            extent=(waves.extent[0] - 2 * self._margin, waves.extent[1] - 2 * self._margin),
+            offset=(self._py3ded_margin, self._py3ded_margin),
+            extent=(waves.extent[0] - 2 * self._py3ded_margin, waves.extent[1] - 2 * self._py3ded_margin),
         )
         return cropped
 
@@ -71,8 +76,8 @@ class WindowedPixelatedDetector(PixelatedDetector):
     def _calculate_new_array(self, waves):
         cropped = self._crop(waves)
 
-        window_x = windows.get_window(self._window_func, cropped.shape[-2])
-        window_y = windows.get_window(self._window_func, cropped.shape[-1])
+        window_x = windows.get_window(self._py3ded_window_func, cropped.shape[-2])
+        window_y = windows.get_window(self._py3ded_window_func, cropped.shape[-1])
 
         window = window_x[:, None] * window_y[None, :]
 

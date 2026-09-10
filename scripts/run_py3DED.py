@@ -235,7 +235,9 @@ zarr_file_supercell.attrs['rotation_axis_orientation'] = f"{s['rotation_axis_ori
 for k in 'box_size_x', 'box_size_y', 'thickness':
     zarr_file_supercell.attrs[k] = f'{s[k]:.3f} Angstrom'
 
-N_atoms = zarr_file_supercell.atom.shape[0]
+# item access, not attribute access: zarr 3.x (required by current abTEM) dropped
+# the v2 sugar that let a dataset be read as zarr_file_supercell.atom
+N_atoms = zarr_file_supercell['atom'].shape[0]
 zarr_file_supercell.attrs['N_atoms'] = N_atoms
 
 print('Zarray structure:')

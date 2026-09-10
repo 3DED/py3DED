@@ -136,12 +136,13 @@ sep()
 # read data
 logger.info(file_bw)
 logger.info("Reading BW data ... ")
-data_bw = abtem.from_zarr(file_bw).to_data_array() #.compute()
+# abtem.from_zarr expects a str url (it calls .endswith(".zip") on it), not a Path
+data_bw = abtem.from_zarr(str(file_bw)).to_data_array() #.compute()
 logger.info("done.")
 logger.info("")
 logger.info(file_ms)
 logger.info("Reading MS data ... ")
-data_ms = abtem.from_zarr(file_ms).to_data_array() #.compute()
+data_ms = abtem.from_zarr(str(file_ms)).to_data_array() #.compute()
 logger.info("done.")
 logger.info("")
 
