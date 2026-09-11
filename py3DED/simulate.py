@@ -269,6 +269,14 @@ def set_abtem_config(config: Config):
             "diagnostics.task_progress": config.task_progress,
             "diagnostics.progress_bar": "tqdm",
             "enable_mps": config.enable_mps,
+            # True -> abTEM's "always" mode, which (unlike the "auto" default)
+            # also rounds a grid derived from our own explicit numeric
+            # `sampling` to a fast FFT length -- avoiding the much slower
+            # Bluestein cuFFT fallback for sizes with large prime factors.
+            # This does shift the *exact* sampling slightly from what was
+            # requested, so a box size run with this on isn't bit-for-bit
+            # comparable to one run before it was set.
+            "grid.round-to-fast-fft": True,
         }
     )
 
