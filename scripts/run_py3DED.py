@@ -109,8 +109,18 @@ else:
 ### OUTPUT FOLDER, pathlib
 #    
 
+# cif_file and output_folder are resolved relative to the config file's own
+# directory (not the shell's cwd at invocation) when given as relative paths,
+# so this script works the same regardless of where it's launched from.
+config_dir = Path(call_arguments[1]).resolve().parent
+
 cif_file = Path(s['cif_file'])
+if not cif_file.is_absolute():
+    cif_file = config_dir / cif_file
+
 output_folder = Path(s['output_folder'])
+if not output_folder.is_absolute():
+    output_folder = config_dir / output_folder
 
 if 'ms' not in s['mode'].lower():
     s['box_size_x'] = 1
@@ -290,9 +300,8 @@ with open(settings_file, 'w') as fh:
     print('Settings written to:', settings_file)
 
 # copy CIF file
-source = Path(s['cif_file'])
-destination = output_base / source.name
-destination.write_bytes( source.read_bytes() )
+destination = output_base / cif_file.name
+destination.write_bytes( cif_file.read_bytes() )
 print('CIF file copied.')
 
 sep()
