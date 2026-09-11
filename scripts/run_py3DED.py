@@ -127,7 +127,7 @@ if s['transform_cell'] is not False:
 
 output_base = output_folder / output_subfolder
 
-output_base.mkdir()
+output_base.mkdir(parents=True)
 
 #
 ### LOGGING
