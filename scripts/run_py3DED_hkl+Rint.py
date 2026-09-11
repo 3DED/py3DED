@@ -52,12 +52,13 @@ def calculate_integrated_intensities(file, g_max=2.0):
     
     # Load and compute intensities
     intensities = dsz.intensities[:,:,hkl_mask].compute()
-    
-    # MS: multiply all intensities with (8/3)**2 due to Hann filter
-    if file.name == "ms.zarr":
-        print("MS: Multiply all intensities with (8/3)**2.")
-        intensities *= (8/3)**2
-    
+
+    # No rescale needed here: WindowedPixelatedDetector (py3DED/detector.py) is
+    # now abTEM's own class, which auto-renormalizes MS intensities by the
+    # actual window's power gain at write time -- applying (8/3)**2 on top
+    # unconditionally (as this used to, regardless of which window_func was
+    # actually used) would double-count that correction.
+
     # Get electron kinetic energy from metadata
     energy = dsz.metadata['energy']
     print("Energy in metadata:", energy, "eV")
@@ -223,8 +224,14 @@ def calculate_rint(integrated_data, cif_file, add_inversion=True):
 
     # make sure that list of symmetry operations is unique
     # and keep order
+    # (ndarray.sort() sorts in place and returns None; arr[None] inserts a new
+    # axis and [0] immediately strips it back off, so the previous version of
+    # this line -- rotations_reciprocal[unique_ids.sort()][0] -- was a no-op
+    # that silently kept every duplicate, e.g. all 4 F-centering repeats of
+    # each rotation. np.sort() (the function, not the method) returns the
+    # sorted array instead of mutating in place.)
     _, unique_ids = np.unique(rotations_reciprocal, axis=0, return_index=True)
-    rotations_reciprocal = rotations_reciprocal[ unique_ids.sort() ][0]
+    rotations_reciprocal = rotations_reciprocal[np.sort(unique_ids)]
     
     for m in rotations_reciprocal:
         print(m)
@@ -409,7 +416,7 @@ if __name__ == '__main__':
     file_cif = None
 
     # ZARR file
-    if len(call_arguments) == 2 and call_arguments[1].endswith(".zarr"):
+    if len(call_arguments) == 2 and call_arguments[1].endswith((".zarr", ".zip")):
         file_zarr = Path(call_arguments[1])
         if not file_zarr.exists():
             file_zarr = None

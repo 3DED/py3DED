@@ -18,16 +18,14 @@ import abtem.parametrizations
 import abtem.potentials.iam
 import abtem.waves
 import ase
-import dask
 import numpy as np
-from abtem import AtomsEnsemble
-from abtem.atoms import euler_to_rotation
 from abtem.bloch import BlochWaves, StructureFactor
-from abtem.core.axes import NonLinearAxis
 from abtem.core.energy import energy2wavelength
-from ase import Atoms
+from abtem.rotation_series import (
+    rotated_atoms_ensemble,
+    rotation_series_orientation_matrices,
+)
 
-from py3DED.atoms import crop_atoms_to_cell, rotate_atoms
 from py3DED.config import BaseConfig, parse_arguments
 from py3DED.detector import WindowedPixelatedDetector
 from py3DED.io import read_atoms_from_zarr
@@ -271,47 +269,24 @@ def set_abtem_config(config: Config):
             "diagnostics.task_progress": config.task_progress,
             "diagnostics.progress_bar": "tqdm",
             "enable_mps": config.enable_mps,
+            # True -> abTEM's "always" mode, which (unlike the "auto" default)
+            # also rounds a grid derived from our own explicit numeric
+            # `sampling` to a fast FFT length -- avoiding the much slower
+            # Bluestein cuFFT fallback for sizes with large prime factors.
+            # This does shift the *exact* sampling slightly from what was
+            # requested, so a box size run with this on isn't bit-for-bit
+            # comparable to one run before it was set.
+            "grid.round-to-fast-fft": True,
         }
     )
 
 
-def _rotate_and_crop_to_cell(atoms, rotation, rotation_axis: float = 0.0):
-
-    rotated_atoms = rotate_atoms(
-        atoms,
-        center="COU",
-        ai=rotation_axis,
-        aj=rotation,
-        ak=-rotation_axis,
-        axes="zxz",
-    )
-
-    cropped_atoms = crop_atoms_to_cell(rotated_atoms)
-    return cropped_atoms
-
-
-def make_rotated_atoms_ensemble(atoms: Atoms, config: Config):
-    func = dask.delayed(_rotate_and_crop_to_cell)
-
-    rotations = get_x_angles(config)
-
-    rotation_axis = np.deg2rad(config.rotation_axis)
-
-    trajectory = [
-        func(atoms, rotation, rotation_axis=rotation_axis) for rotation in rotations
-    ]
-
-    axis_metadata = NonLinearAxis(label="x_rotation", units="deg", values=rotations)
-
-    ensemble = AtomsEnsemble(
-        trajectory, ensemble_mean=False, ensemble_axes_metadata=axis_metadata
-    )
-    return ensemble
-
-
 def get_atoms_ensemble(config: Config):
     supercell = read_atoms_from_zarr(config.supercell, lazy=True).compute()
-    atoms_ensemble = make_rotated_atoms_ensemble(supercell, config)
+    angles_deg = np.rad2deg(get_x_angles(config))
+    atoms_ensemble = rotated_atoms_ensemble(
+        supercell, angles_deg, rotation_axis=config.rotation_axis
+    )
     if isinstance(config.unit_cell, str):
         atoms = ase.io.read(config.unit_cell)
     else:
@@ -319,21 +294,19 @@ def get_atoms_ensemble(config: Config):
     return atoms_ensemble, atoms
 
 
-def get_zxz_rotation_matrix(rotation, rotation_axis):
-    rotations = euler_to_rotation(rotation_axis, rotation, -rotation_axis, axes="zxz")
-    return rotations
-
-
 def setup_multislice(config: Config, return_exit_wave=False):
-    angles = get_x_angles(config)
-
     atoms_ensemble, atoms = get_atoms_ensemble(config)
 
     pw = abtem.waves.PlaneWave(energy=config.energy)
 
     potential = make_potential(config)
 
-    max_angle = config.g_max_store * energy2wavelength(config.energy) * 1e3
+    # config.energy may be a list (abTEM's energy-ensemble support) -- lower
+    # energy means longer wavelength means a larger angle needed to reach the
+    # same g_max_store, so size the detector off the lowest energy present to
+    # cover every energy in the ensemble.
+    min_energy = np.min(config.energy)
+    max_angle = config.g_max_store * energy2wavelength(min_energy) * 1e3
 
     detector = WindowedPixelatedDetector(
         max_angle=max_angle * 1.2,
@@ -345,14 +318,20 @@ def setup_multislice(config: Config, return_exit_wave=False):
 
     diffraction = pw.multislice(potential=potential, detectors=detector)
 
-    rotation_axis = np.deg2rad(config.rotation_axis)
-
-    orientation_matrices = np.array(
-        [
-            get_zxz_rotation_matrix(angle, rotation_axis=rotation_axis)
-            for angle in angles
-        ]
-    )[:, None]
+    angles_deg = np.rad2deg(get_x_angles(config))
+    orientation_matrices = rotation_series_orientation_matrices(
+        angles_deg, rotation_axis=config.rotation_axis
+    )
+    # Broadcast against diffraction's full ensemble shape: rotation is always
+    # its leading axis, followed by one size-1 placeholder per remaining
+    # ensemble axis (thickness always, plus energy when config.energy is a
+    # list/array -- abTEM's energy ensemble). A fixed single trailing None
+    # (assuming exactly one extra axis) would silently misalign the axes
+    # instead of raising once an energy ensemble adds a second one.
+    n_placeholders = len(diffraction.ensemble_shape) - 1
+    orientation_matrices = orientation_matrices.reshape(
+        orientation_matrices.shape[0], *([1] * n_placeholders), 3, 3
+    )
 
     diffraction_indexed = diffraction.to_cpu().index_diffraction_spots(
         cell=atoms,
@@ -415,10 +394,28 @@ def setup_bloch_wave(
         .crop(k_max=config.g_max_store)
     )
 
+    # Stored in degrees, matching the "deg" units on this same axis in
+    # get_atoms_ensemble()'s multislice-side AtomsEnsemble (abtem.rotation_series
+    # .rotated_atoms_ensemble) -- both used to store radians under a "deg" label
+    # (harmless on its own, since nothing read the values back), but now that
+    # the multislice side stores actual degrees, leaving this one in radians
+    # would make the two sides' x_rotation coordinates fail to align.
     diffraction_bw.axes_metadata[0].label = "x_rotation"
-    diffraction_bw.axes_metadata[0].values = tuple(angles)
+    diffraction_bw.axes_metadata[0].values = tuple(np.rad2deg(angles))
 
-    return diffraction_bw[:, 1:]
+    # Drop the leading (bogus, z=0) exit-plane entry -- previously always
+    # axis 1, but abTEM's energy ensemble (config.energy as a list) inserts
+    # an extra Energy axis between x_rotation and z, so a fixed position
+    # would silently drop the first energy instead. Locate "z" by label so
+    # this keeps working regardless of how many ensemble axes precede it.
+    z_axis = next(
+        i for i, ax in enumerate(diffraction_bw.axes_metadata)
+        if getattr(ax, "label", None) == "z"
+    )
+    slicer = tuple(
+        slice(1, None) if i == z_axis else slice(None) for i in range(z_axis + 1)
+    )
+    return diffraction_bw[slicer]
 
 
 def run(config=None, save_to_disk=True):
