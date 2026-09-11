@@ -9,13 +9,13 @@
 # parent directory.
 #
 # Usage (from anywhere):
-#   ./run_si_boxsize_sweep.sh [config_dir] [python-executable]
+#   ./run_convergence_sweep.sh [config_dir] [python-executable]
 #
 # config_dir defaults to examples/convergence_tests/Si_MS_boxsize relative to
 # this script's own repo. The python executable defaults to "python" on PATH;
 # pass e.g. a conda env's python explicitly if that's not the one with
 # py3DED/abTEM installed:
-#   ./run_si_boxsize_sweep.sh ../examples/convergence_tests/Si_BW_gmax /path/to/env/bin/python
+#   ./run_convergence_sweep.sh ../examples/convergence_tests/Si_BW_gmax /path/to/env/bin/python
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

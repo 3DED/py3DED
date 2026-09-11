@@ -11,7 +11,7 @@
 # plain ms.zarr/bw.zarr directory store -- whichever is present.
 #
 # Usage:
-#   ./run_si_boxsize_analysis.sh [results_dir] [python-executable]
+#   ./run_convergence_analysis.sh [results_dir] [python-executable]
 #
 # results_dir defaults to examples/convergence_tests/Si_MS_boxsize/results/Si_boxsize
 # relative to this script's own repo (i.e. scripts/../examples/...).

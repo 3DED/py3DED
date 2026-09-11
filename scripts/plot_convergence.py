@@ -35,7 +35,7 @@ Si_MS_boxsize/Si_MS_slice_thickness sweeps and the BW-only Si_BW_gmax/
 Si_BW_Sgmax sweeps all work the same way here.
 
 Usage:
-    python plot_ms_convergence.py <results_dir> [--parameter KEY] [--reference VALUE]
+    python plot_convergence.py <results_dir> [--parameter KEY] [--reference VALUE]
 
 results_dir is the directory containing one subfolder per run (each with its
 own settings.json and ms/bw store, in either zip or plain-directory form).
@@ -243,6 +243,7 @@ def main(results_dir, parameter="box_size_x", reference_value=None):
     ax.set_xlabel(parameter)
     ax.set_ylabel(f"ASI / ASI({reference_value:.4g})")
     ax.set_title(f"Average scattered intensity vs. {parameter}\n(normalized to reference value)")
+    ax.set_ylim(0.9, 1.1)
     ax.legend()
     ax.grid(alpha=0.3)
 
