@@ -37,6 +37,12 @@ class Config(BaseConfig):
         value of 1.0 will remove all atoms.
     seed : int
         The seed for the random number generator used to add vacancies.
+    rotation_range : tuple[float, float] | None
+        If the disk will only ever be rotated within this angular range [deg] (matching the actual
+        rotation_min/rotation_max of the simulation), restricts the disk to just the atoms that can appear inside
+        the box for some angle in that range, instead of sizing it to survive an arbitrary angle -- exact, not an
+        approximation, and can shrink the disk substantially for a limited tilt series on a thick sample. Only
+        used when shape is "disk"; None keeps the previous full-disk behavior.
     """
 
     atoms: str | Atoms = "structures/si.cif"
@@ -46,6 +52,7 @@ class Config(BaseConfig):
     store_path: str = "structures/{atoms}_{shape}.zarr"
     vacancies: float = 0.0
     seed: int = 1337
+    rotation_range: tuple[float, float] | None = None
 
 
 def validate_box(box: str | tuple[float, float, float]):
@@ -77,7 +84,12 @@ def make_atoms(config: Optional[Config] = None):
         atoms = config.atoms
 
     if config.shape == "disk":
-        atoms = cut_disk(atoms, box, rotation_axis=config.rotation_axis)
+        atoms = cut_disk(
+            atoms,
+            box,
+            rotation_axis=config.rotation_axis,
+            rotation_range=config.rotation_range,
+        )
     elif config.shape == "ball":
         atoms = cut_ball(atoms, box)
     else:

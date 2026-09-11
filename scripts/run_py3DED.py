@@ -212,6 +212,7 @@ structure_config.box = (s['box_size_x'],
                         s['box_size_y'],
                         s['thickness'])
 structure_config.vacancies = s['vacancies']
+structure_config.rotation_range = (s['rotation_min'], s['rotation_max'])
 
 print()
 
