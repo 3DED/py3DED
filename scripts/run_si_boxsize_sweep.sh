@@ -1,25 +1,41 @@
 #!/usr/bin/env bash
-# Batch-run every convergence-test config in examples/convergence_tests/Si_MS_boxsize
-# through scripts/run_py3DED.py, one at a time, logging each run and continuing past
-# individual failures instead of aborting the whole sweep.
+# Batch-run every *.json config in a convergence_tests folder (e.g.
+# examples/convergence_tests/Si_MS_boxsize, Si_BW_gmax, Si_BW_Sgmax, or one of
+# Si_MS_slice_thickness's subfolders) through scripts/run_py3DED.py, one at a
+# time, logging each run and continuing past individual failures instead of
+# aborting the whole sweep. Non-recursive -- each of these folders (or
+# subfolder, for Si_MS_slice_thickness) is its own independent sweep over one
+# varying parameter, so run this once per folder rather than pointing it at a
+# parent directory.
 #
 # Usage (from anywhere):
-#   ./run_si_boxsize_sweep.sh [python-executable]
+#   ./run_si_boxsize_sweep.sh [config_dir] [python-executable]
 #
-# The python executable defaults to "python" on PATH; pass e.g. a conda env's
-# python explicitly if that's not the one with py3DED/abTEM installed:
-#   ./run_si_boxsize_sweep.sh /path/to/env/bin/python
+# config_dir defaults to examples/convergence_tests/Si_MS_boxsize relative to
+# this script's own repo. The python executable defaults to "python" on PATH;
+# pass e.g. a conda env's python explicitly if that's not the one with
+# py3DED/abTEM installed:
+#   ./run_si_boxsize_sweep.sh ../examples/convergence_tests/Si_BW_gmax /path/to/env/bin/python
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_DIR="$REPO_ROOT/examples/convergence_tests/Si_MS_boxsize"
+CONFIG_DIR="${1:-$REPO_ROOT/examples/convergence_tests/Si_MS_boxsize}"
 SCRIPT="$REPO_ROOT/scripts/run_py3DED.py"
-PYTHON="${1:-python}"
+PYTHON="${2:-python}"
 
 if [ ! -f "$SCRIPT" ]; then
     echo "Can't find run_py3DED.py at $SCRIPT -- adjust REPO_ROOT in this script if it lives elsewhere." >&2
     exit 1
 fi
+
+# Resolve to an absolute path *before* the cd below, so a relative config_dir
+# (e.g. "../examples/convergence_tests/Si_BW_gmax") doesn't break LOG_DIR's
+# meaning once the working directory changes.
+if [ ! -d "$CONFIG_DIR" ]; then
+    echo "Config directory not found: $CONFIG_DIR" >&2
+    exit 1
+fi
+CONFIG_DIR="$(cd "$CONFIG_DIR" && pwd)"
 
 LOG_DIR="$CONFIG_DIR/sweep_logs"
 mkdir -p "$LOG_DIR"
