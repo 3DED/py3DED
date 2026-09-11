@@ -4,6 +4,7 @@ import xarray as xr
 import numpy as np
 import ase
 import dask
+import zarr
 
 
 def atoms_to_xarray(atoms):
@@ -45,13 +46,38 @@ def xarray_to_atoms(ds):
     return atoms
 
 
+def open_zarr_group(path, mode="a"):
+    """Open a zarr group at `path`, using a zarr.storage.ZipStore when `path`
+    ends in ".zip" (matching abtem.to_zarr/from_zarr's own convention)
+    instead of treating it as a directory -- a plain zarr.open(path, ...)
+    tries to mkdir() there, colliding with the zip file already written by
+    something else. Close the returned group's .store when done writing, to
+    flush a zip archive's central directory -- harmless for a plain
+    directory store too."""
+    path = str(path)
+    if path.endswith(".zip"):
+        store = zarr.storage.ZipStore(path, mode=mode)
+        return zarr.open(store=store, mode=mode)
+    return zarr.open(path, mode=mode)
+
+
 def save_atoms_to_zarr(filename, atoms):
     ds = atoms_to_xarray(atoms)
-    ds.to_zarr(filename, mode="w")
+    filename = str(filename)
+    if filename.endswith(".zip"):
+        store = zarr.storage.ZipStore(filename, mode="w")
+        ds.to_zarr(store=store, mode="w")
+        store.close()
+    else:
+        ds.to_zarr(filename, mode="w")
 
 
 def read_atoms_from_zarr(filename, lazy=False):
-    ds = xr.open_zarr(filename)
+    filename = str(filename)
+    if filename.endswith(".zip"):
+        ds = xr.open_zarr(zarr.storage.ZipStore(filename, mode="r"))
+    else:
+        ds = xr.open_zarr(filename)
 
     if lazy:
         return dask.delayed(xarray_to_atoms)(ds)

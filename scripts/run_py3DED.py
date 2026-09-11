@@ -25,7 +25,7 @@ Thermal sigmas: σ = sqrt(U) = sqrt(B / (8 pi ** 2))
 import abtem
 from ase.io import read as ase_read
 from py3DED import atoms, simulate
-from py3DED.io import read_atoms_from_zarr
+from py3DED.io import open_zarr_group, read_atoms_from_zarr
 
 import zarr
 import numpy as np
@@ -224,7 +224,7 @@ t.unit_cell[:] # unit cell size
 
 # write attributes / meta data
 print('Writing meta data as zarray attributes.')
-zarr_file_supercell = zarr.open( structure_config.store_path, mode='a')
+zarr_file_supercell = open_zarr_group(structure_config.store_path, mode='a')
 
 zarr_file_supercell.attrs['config'] = str(structure_config)
 zarr_file_supercell.attrs['cif_file'] = str(s['cif_file'])
@@ -244,8 +244,8 @@ print('Zarray structure:')
 for name, content in zarr_file_supercell.arrays():
     print(f'|__ {name:20} {content.dtype.name:8}', content.shape)
 
-# no need to close zarr_file_supercell?
-del zarr_file_supercell    
+zarr_file_supercell.store.close()  # flushes a .zip store's central directory
+del zarr_file_supercell
 
 sep()
 
@@ -318,7 +318,7 @@ if 'ms' in s['mode'].lower():
     print(f'DONE. {duration/60:.2f} minutes')
 
     # write meta data
-    zarr_file_ms = zarr.open( output_file, mode='a')
+    zarr_file_ms = open_zarr_group(output_file, mode='a')
     for e in dir(run_config):
         if not e.startswith('_') and e not in ('ctx', 'unit_cell'):
             zarr_file_ms.attrs[e] = getattr(run_config, e)
@@ -329,6 +329,7 @@ if 'ms' in s['mode'].lower():
     print('Zarray structure:')
     for name, content in zarr_file_ms.arrays():
         print(f'|__ {name:20} {content.dtype.name:8}', content.shape)
+    zarr_file_ms.store.close()  # flushes a .zip store's central directory
 
 
 #####
@@ -350,7 +351,7 @@ if 'bw' in s['mode'].lower():
     print(f'DONE. {duration/60:.2f} minutes')
 
     # write meta data
-    zarr_file_bw = zarr.open( output_file, mode='a')
+    zarr_file_bw = open_zarr_group(output_file, mode='a')
     for e in dir(run_config):
         if not e.startswith('_') and e not in ('ctx', 'unit_cell'):
             zarr_file_bw.attrs[e] = getattr(run_config, e)
@@ -361,6 +362,7 @@ if 'bw' in s['mode'].lower():
     print('Zarray structure:')
     for name, content in zarr_file_bw.arrays():
         print(f'|__ {name:20} {content.dtype.name:8}', content.shape)
+    zarr_file_bw.store.close()  # flushes a .zip store's central directory
 
 # z = zarr.open( output_file, mode='r')
 # hkl = z.attrs['kwargs0']['miller_indices']
