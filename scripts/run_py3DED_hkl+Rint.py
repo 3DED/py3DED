@@ -410,7 +410,7 @@ if __name__ == '__main__':
     file_cif = None
 
     # ZARR file
-    if len(call_arguments) == 2 and call_arguments[1].endswith(".zarr"):
+    if len(call_arguments) == 2 and call_arguments[1].endswith((".zarr", ".zip")):
         file_zarr = Path(call_arguments[1])
         if not file_zarr.exists():
             file_zarr = None

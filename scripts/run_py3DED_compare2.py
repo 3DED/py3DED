@@ -74,7 +74,7 @@ else:
 # check files
 if ( file_bw and file_ms and
      file_bw.exists() and file_ms.exists() and
-     file_bw.name.endswith('.zarr') and file_ms.name.endswith('.zarr') ):
+     file_bw.name.endswith(('.zarr', '.zip')) and file_ms.name.endswith(('.zarr', '.zip')) ):
     s['bw_file'] = file_bw
     s['ms_file'] = file_ms
 else:
