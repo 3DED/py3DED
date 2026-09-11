@@ -224,8 +224,14 @@ def calculate_rint(integrated_data, cif_file, add_inversion=True):
 
     # make sure that list of symmetry operations is unique
     # and keep order
+    # (ndarray.sort() sorts in place and returns None; arr[None] inserts a new
+    # axis and [0] immediately strips it back off, so the previous version of
+    # this line -- rotations_reciprocal[unique_ids.sort()][0] -- was a no-op
+    # that silently kept every duplicate, e.g. all 4 F-centering repeats of
+    # each rotation. np.sort() (the function, not the method) returns the
+    # sorted array instead of mutating in place.)
     _, unique_ids = np.unique(rotations_reciprocal, axis=0, return_index=True)
-    rotations_reciprocal = rotations_reciprocal[ unique_ids.sort() ][0]
+    rotations_reciprocal = rotations_reciprocal[np.sort(unique_ids)]
     
     for m in rotations_reciprocal:
         print(m)
