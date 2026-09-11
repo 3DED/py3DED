@@ -52,12 +52,13 @@ def calculate_integrated_intensities(file, g_max=2.0):
     
     # Load and compute intensities
     intensities = dsz.intensities[:,:,hkl_mask].compute()
-    
-    # MS: multiply all intensities with (8/3)**2 due to Hann filter
-    if file.name == "ms.zarr":
-        print("MS: Multiply all intensities with (8/3)**2.")
-        intensities *= (8/3)**2
-    
+
+    # No rescale needed here: WindowedPixelatedDetector (py3DED/detector.py) is
+    # now abTEM's own class, which auto-renormalizes MS intensities by the
+    # actual window's power gain at write time -- applying (8/3)**2 on top
+    # unconditionally (as this used to, regardless of which window_func was
+    # actually used) would double-count that correction.
+
     # Get electron kinetic energy from metadata
     energy = dsz.metadata['energy']
     print("Energy in metadata:", energy, "eV")

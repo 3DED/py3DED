@@ -13,7 +13,13 @@ import xarray
 
 # default settings
 setup_analysis = {
-    'scale':               'Hann',   # 'Hann' | '000' | 'Newton' | False
+    # WindowedPixelatedDetector (py3DED/detector.py) is now abTEM's own class,
+    # which auto-renormalizes MS intensities by the actual window's power gain
+    # at write time -- applying 'Hann' here on top would double-count that
+    # correction (confirmed: it roughly doubles Bragg R rather than improving
+    # it). Set to 'Hann'/'000'/'Newton' only when analyzing data written by
+    # something that does NOT already renormalize (e.g. pre-#1 zarr files).
+    'scale':               False,    # 'Hann' | '000' | 'Newton' | False
     'averaging_depth':     False,    # thickness-smoothing of intensities, depth in Å, e.g. 10.0
     'tolerance':           1e-6,     # ignore reflections with I < tolerance
     'g_max_limit':         2.0,      # ignore reflections with g_max > g_max_limit
