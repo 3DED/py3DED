@@ -301,7 +301,12 @@ def setup_multislice(config: Config, return_exit_wave=False):
 
     potential = make_potential(config)
 
-    max_angle = config.g_max_store * energy2wavelength(config.energy) * 1e3
+    # config.energy may be a list (abTEM's energy-ensemble support) -- lower
+    # energy means longer wavelength means a larger angle needed to reach the
+    # same g_max_store, so size the detector off the lowest energy present to
+    # cover every energy in the ensemble.
+    min_energy = np.min(config.energy)
+    max_angle = config.g_max_store * energy2wavelength(min_energy) * 1e3
 
     detector = WindowedPixelatedDetector(
         max_angle=max_angle * 1.2,
@@ -316,7 +321,17 @@ def setup_multislice(config: Config, return_exit_wave=False):
     angles_deg = np.rad2deg(get_x_angles(config))
     orientation_matrices = rotation_series_orientation_matrices(
         angles_deg, rotation_axis=config.rotation_axis
-    )[:, None]
+    )
+    # Broadcast against diffraction's full ensemble shape: rotation is always
+    # its leading axis, followed by one size-1 placeholder per remaining
+    # ensemble axis (thickness always, plus energy when config.energy is a
+    # list/array -- abTEM's energy ensemble). A fixed single trailing None
+    # (assuming exactly one extra axis) would silently misalign the axes
+    # instead of raising once an energy ensemble adds a second one.
+    n_placeholders = len(diffraction.ensemble_shape) - 1
+    orientation_matrices = orientation_matrices.reshape(
+        orientation_matrices.shape[0], *([1] * n_placeholders), 3, 3
+    )
 
     diffraction_indexed = diffraction.to_cpu().index_diffraction_spots(
         cell=atoms,
@@ -388,7 +403,19 @@ def setup_bloch_wave(
     diffraction_bw.axes_metadata[0].label = "x_rotation"
     diffraction_bw.axes_metadata[0].values = tuple(np.rad2deg(angles))
 
-    return diffraction_bw[:, 1:]
+    # Drop the leading (bogus, z=0) exit-plane entry -- previously always
+    # axis 1, but abTEM's energy ensemble (config.energy as a list) inserts
+    # an extra Energy axis between x_rotation and z, so a fixed position
+    # would silently drop the first energy instead. Locate "z" by label so
+    # this keeps working regardless of how many ensemble axes precede it.
+    z_axis = next(
+        i for i, ax in enumerate(diffraction_bw.axes_metadata)
+        if getattr(ax, "label", None) == "z"
+    )
+    slicer = tuple(
+        slice(1, None) if i == z_axis else slice(None) for i in range(z_axis + 1)
+    )
+    return diffraction_bw[slicer]
 
 
 def run(config=None, save_to_disk=True):
