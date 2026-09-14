@@ -40,7 +40,8 @@ import numpy as np
 
 
 def build_small_config(cif_file, box_size, thickness, rotation_steps, sampling,
-                        slice_thickness, energies, device, num_workers, to_cpu):
+                        slice_thickness, energies, device, num_workers, to_cpu,
+                        exit_planes=10):
     import ase.io
     from abtem.atoms import cut_disk
 
@@ -60,7 +61,7 @@ def build_small_config(cif_file, box_size, thickness, rotation_steps, sampling,
     config.rotation_max = rotation_max
     config.rotation_steps = rotation_steps
     config.slice_thickness = slice_thickness
-    config.exit_planes = 10
+    config.exit_planes = exit_planes
     config.sampling = sampling
     config.g_max_store = 2.0
     config.sg_max = 1.0
@@ -214,6 +215,8 @@ def main():
     parser.add_argument("--rotation-steps", type=int, default=8)
     parser.add_argument("--sampling", type=float, default=0.02)
     parser.add_argument("--slice-thickness", type=float, default=0.4)
+    parser.add_argument("--exit-planes", type=int, default=10,
+                         help="detector/output checkpoint every this many slices (default: 10)")
     parser.add_argument("--energies", type=float, nargs="+", default=[200e3],
                          help="one or more energies [eV] -- pass several for an energy ensemble")
     parser.add_argument("--device", default="gpu")
@@ -259,7 +262,7 @@ def main():
         config, disk, atoms = build_small_config(
             args.cif, args.box_size, args.thickness, args.rotation_steps,
             args.sampling, args.slice_thickness, args.energies, args.device,
-            args.num_workers, args.to_cpu,
+            args.num_workers, args.to_cpu, args.exit_planes,
         )
         checkpoints.append(("config_and_disk_built", time.time()))
         print(f"[{args.label}] disk atoms: {len(disk)}  (built in {time.time()-t0:.2f}s)", flush=True)
@@ -299,7 +302,8 @@ def main():
         f"num_workers={args.num_workers} chunk-size-gpu={args.chunk_size_gpu} "
         f"to_cpu={args.to_cpu} energies={args.energies}\n"
         f"box={args.box_size}x{args.box_size}x{args.thickness} "
-        f"rotation_steps={args.rotation_steps} sampling={args.sampling}\n\n"
+        f"rotation_steps={args.rotation_steps} sampling={args.sampling} "
+        f"exit_planes={args.exit_planes}\n\n"
     )
     full_report = report_header + report
     report_path.write_text(full_report)
