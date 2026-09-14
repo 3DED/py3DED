@@ -97,11 +97,16 @@ class Config(BaseConfig):
         in the multislice simulation in Angstroms.
     potential_chunk_size : int or str, optional
         Number of potential slices built per memory-budgeted chunk (abTEM's
-        potential.slice-chunk-size). Defaults to 25, verified against a
-        24GB GPU at the real 8000x8000 production grid size; abTEM's own
-        "auto" default is far more conservative there and measurably
-        slower. Pass "auto" to fall back to abTEM's live-VRAM-based
-        sizing, or tune to a different explicit value for other hardware.
+        potential.slice-chunk-size). Defaults to "auto" (abTEM's own
+        live-VRAM-based sizing), which is safe but can be measurably slower
+        than necessary at real production grid sizes. An explicit value can
+        give a real speedup (e.g. ~2x measured on a 24GB GPU at an
+        8000x8000 grid, single energy) but the safe headroom is workload-
+        dependent -- it shrinks with more concurrently-resident state, e.g.
+        an energy ensemble's per-energy propagator/wave buffers, even
+        though the potential array itself doesn't depend on energy. Only
+        raise this after confirming it doesn't OOM for your specific grid
+        size, energy-ensemble size, and available VRAM.
     sg_max : float, optional
         The maximum excitation error to be included in the Bloch wave simulations in reciprocal Angstroms.
     g_max : float, optional
@@ -164,16 +169,21 @@ class Config(BaseConfig):
     to_cpu: bool = False
     # abTEM's "auto" sizing for potential.slice-chunk-size (the number of
     # potential slices built per memory-budgeted chunk) is far more
-    # conservative than necessary at real production grid sizes. Verified
-    # on europa at the real 8000x8000 grid, 2500-slice depth: "auto" picked
+    # conservative than necessary at real production grid sizes: on europa,
+    # real 8000x8000 grid, 2500-slice depth, single-energy, "auto" picked
     # only 5 slices/chunk (181 idle periods during compute, 115.3s idle,
     # 287.5s compute time), while an explicit 25 used 20045/24564 MiB VRAM
-    # (~82%, no OOM headroom issue) and cut idle time to 22.0s and compute
-    # time to 142.9s -- roughly a 2x speedup with no correctness difference.
-    # "auto" is left as an override for other GPUs/grid sizes where 25
-    # slices might not fit; tune per-hardware if VRAM differs substantially
-    # from a 24GB card at this grid size.
-    potential_chunk_size: int | str = 25
+    # and cut idle time to 22.0s / compute time to 142.9s -- a real ~2x
+    # speedup. BUT that headroom was measured single-energy only: the same
+    # 25 OOM'd on the actual production all_energies.json run (5-energy
+    # ensemble, num_workers=1) -- each energy's propagator/wave state stays
+    # resident concurrently even though the potential array itself is
+    # energy-independent, leaving less headroom than the single-energy
+    # figure above suggested. So "auto" stays the default (verified safe
+    # across configs, just slower); raise this explicitly per-workload once
+    # you've confirmed it doesn't OOM for that specific combination of grid
+    # size, energy-ensemble size, and available VRAM.
+    potential_chunk_size: int | str = "auto"
 
     # Bloch wave
     # ----------
