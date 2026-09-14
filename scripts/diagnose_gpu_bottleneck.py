@@ -217,6 +217,13 @@ def main():
     parser.add_argument("--slice-thickness", type=float, default=0.4)
     parser.add_argument("--exit-planes", type=int, default=10,
                          help="detector/output checkpoint every this many slices (default: 10)")
+    parser.add_argument("--potential-chunk-size", default="auto",
+                         help="abtem's potential.slice-chunk-size -- number of "
+                              "potential slices built per memory-budgeted chunk "
+                              "during generate_chunked_slices (default: 'auto', "
+                              "sized from live free VRAM). Pass a large integer "
+                              "(>= total slice count) to force a single chunk "
+                              "and isolate this from exit_planes checkpointing.")
     parser.add_argument("--energies", type=float, nargs="+", default=[200e3],
                          help="one or more energies [eV] -- pass several for an energy ensemble")
     parser.add_argument("--device", default="gpu")
@@ -251,6 +258,7 @@ def main():
         "diagnostics.progress_bar": "tqdm",
         "grid.round-to-fast-fft": True,
         "dask.chunk-size-gpu": args.chunk_size_gpu,
+        "potential.slice-chunk-size": args.potential_chunk_size,
     })
 
     checkpoints = []
@@ -303,7 +311,8 @@ def main():
         f"to_cpu={args.to_cpu} energies={args.energies}\n"
         f"box={args.box_size}x{args.box_size}x{args.thickness} "
         f"rotation_steps={args.rotation_steps} sampling={args.sampling} "
-        f"exit_planes={args.exit_planes}\n\n"
+        f"exit_planes={args.exit_planes} "
+        f"potential_chunk_size={args.potential_chunk_size}\n\n"
     )
     full_report = report_header + report
     report_path.write_text(full_report)
