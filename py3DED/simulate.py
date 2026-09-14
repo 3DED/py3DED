@@ -95,6 +95,13 @@ class Config(BaseConfig):
     margin : float, optional
         The cropping margin to be applied to the (real-space) wave functions in the WindowedPixelatedDetector
         in the multislice simulation in Angstroms.
+    potential_chunk_size : int or str, optional
+        Number of potential slices built per memory-budgeted chunk (abTEM's
+        potential.slice-chunk-size). Defaults to 25, verified against a
+        24GB GPU at the real 8000x8000 production grid size; abTEM's own
+        "auto" default is far more conservative there and measurably
+        slower. Pass "auto" to fall back to abTEM's live-VRAM-based
+        sizing, or tune to a different explicit value for other hardware.
     sg_max : float, optional
         The maximum excitation error to be included in the Bloch wave simulations in reciprocal Angstroms.
     g_max : float, optional
@@ -155,6 +162,18 @@ class Config(BaseConfig):
     # right before index_diffraction_spots needs CPU-resident data, so
     # nothing downstream depends on the detector's own per-chunk copy.
     to_cpu: bool = False
+    # abTEM's "auto" sizing for potential.slice-chunk-size (the number of
+    # potential slices built per memory-budgeted chunk) is far more
+    # conservative than necessary at real production grid sizes. Verified
+    # on europa at the real 8000x8000 grid, 2500-slice depth: "auto" picked
+    # only 5 slices/chunk (181 idle periods during compute, 115.3s idle,
+    # 287.5s compute time), while an explicit 25 used 20045/24564 MiB VRAM
+    # (~82%, no OOM headroom issue) and cut idle time to 22.0s and compute
+    # time to 142.9s -- roughly a 2x speedup with no correctness difference.
+    # "auto" is left as an override for other GPUs/grid sizes where 25
+    # slices might not fit; tune per-hardware if VRAM differs substantially
+    # from a 24GB card at this grid size.
+    potential_chunk_size: int | str = 25
 
     # Bloch wave
     # ----------
@@ -290,6 +309,7 @@ def set_abtem_config(config: Config):
             # requested, so a box size run with this on isn't bit-for-bit
             # comparable to one run before it was set.
             "grid.round-to-fast-fft": True,
+            "potential.slice-chunk-size": config.potential_chunk_size,
         }
     )
 
