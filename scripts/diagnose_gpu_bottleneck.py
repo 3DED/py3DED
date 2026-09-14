@@ -219,8 +219,11 @@ def main():
     parser.add_argument("--device", default="gpu")
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--chunk-size-gpu", default="512 MB")
+    # Defaults to False to match simulate.Config's own default (root-caused
+    # and fixed via this same script -- see commit 36a519d): pass --to-cpu
+    # explicitly to reproduce the old, slower behavior for comparison.
     to_cpu_group = parser.add_mutually_exclusive_group()
-    to_cpu_group.add_argument("--to-cpu", dest="to_cpu", action="store_true", default=True)
+    to_cpu_group.add_argument("--to-cpu", dest="to_cpu", action="store_true", default=False)
     to_cpu_group.add_argument("--no-to-cpu", dest="to_cpu", action="store_false")
     parser.add_argument("--label", default="run")
     parser.add_argument("--out-dir", default=".")
