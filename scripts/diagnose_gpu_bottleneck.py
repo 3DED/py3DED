@@ -261,6 +261,21 @@ def main():
         "potential.slice-chunk-size": args.potential_chunk_size,
     })
 
+    # Log whatever chunk size "auto" actually resolves to at real-run
+    # conditions (live free VRAM, probe batch already resident) instead of
+    # guessing from idle-period counts -- estimate_potential_chunk_size can
+    # be called more than once per compute(), so log every call.
+    from abtem.core import chunks as _abtem_chunks
+    _orig_estimate_potential_chunk_size = _abtem_chunks.estimate_potential_chunk_size
+
+    def _logging_estimate_potential_chunk_size(gpts, device="cpu", dtype=None):
+        n = _orig_estimate_potential_chunk_size(gpts, device, dtype)
+        print(f"[{args.label}] potential chunk size resolved: {n} slices "
+              f"(gpts={gpts}, device={device})", flush=True)
+        return n
+
+    _abtem_chunks.estimate_potential_chunk_size = _logging_estimate_potential_chunk_size
+
     checkpoints = []
     proc, log_file = start_gpu_logger(log_path, args.gpu_poll_interval)
     try:
