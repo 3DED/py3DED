@@ -142,6 +142,12 @@ class Config(BaseConfig):
     integration_radius: float = 0.01
     margin: float = 0.0
     window_func: str = "hann"
+    # Whether the MS detector pulls each computed chunk off the GPU as it
+    # goes (True, the long-standing default) or leaves the whole lazy result
+    # on-device until the final index_diffraction_spots step needs it on
+    # CPU anyway. Exists to isolate per-chunk device transfer as a candidate
+    # cause of poor GPU utilization; not meant as a normal tuning knob.
+    to_cpu: bool = True
 
     # Bloch wave
     # ----------
@@ -310,7 +316,7 @@ def setup_multislice(config: Config, return_exit_wave=False):
 
     detector = WindowedPixelatedDetector(
         max_angle=max_angle * 1.2,
-        to_cpu=True,
+        to_cpu=config.to_cpu,
         reciprocal_space=True,
         margin=config.margin,
         window_func=config.window_func,
