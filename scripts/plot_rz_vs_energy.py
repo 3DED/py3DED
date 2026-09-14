@@ -8,9 +8,14 @@ plot, instead of one plot per energy.
 Usage:
     python plot_rz_vs_energy.py <result_folder> [--g_max_limit VALUE] [--tolerance VALUE]
 
-result_folder must contain ms.zarr and bw.zarr (or their .zip forms) written
-from one run with an energy ensemble -- both must carry an "Energy"
-dimension, which abtem.from_zarr(...).to_data_array() exposes automatically.
+result_folder can either be one run's own output directory (directly
+containing ms.zarr/bw.zarr, or their .zip forms), or the output_folder a
+config points at (e.g. examples/Si_kinetic_energy/results_energy_ensemble/)
+-- each run of run_py3DED.py creates its own timestamped subfolder there, so
+this script looks one level down for a subfolder with both an ms and a bw
+store if result_folder itself doesn't have them directly. Both stores must
+carry an "Energy" dimension, which abtem.from_zarr(...).to_data_array()
+exposes automatically.
 """
 import argparse
 from pathlib import Path
@@ -32,8 +37,35 @@ def find_store(folder: Path, stem: str):
     return None
 
 
+def find_run_folder(result_folder: Path) -> Path:
+    """Return the folder that actually has both an ms and a bw store: either
+    result_folder itself, or -- if not -- whichever of its immediate
+    subfolders does. run_py3DED.py names each run's subfolder with a leading
+    YYYYMMDD-HHMMSS timestamp, so subfolders sort chronologically; if more
+    than one qualifies, the most recent one is used."""
+    if find_store(result_folder, "ms") and find_store(result_folder, "bw"):
+        return result_folder
+
+    candidates = sorted(
+        f for f in result_folder.iterdir()
+        if f.is_dir() and find_store(f, "ms") and find_store(f, "bw")
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            f"No run with both an ms and a bw store found directly under "
+            f"{result_folder}, nor in any of its immediate subfolders."
+        )
+    if len(candidates) > 1:
+        print(
+            f"Found {len(candidates)} runs under {result_folder}: "
+            f"{', '.join(c.name for c in candidates)}"
+        )
+        print(f"Using the most recent: {candidates[-1].name}")
+    return candidates[-1]
+
+
 def main(result_folder, g_max_limit=2.0, tolerance=1e-6):
-    result_folder = Path(result_folder)
+    result_folder = find_run_folder(Path(result_folder))
 
     ms_store = find_store(result_folder, "ms")
     bw_store = find_store(result_folder, "bw")
