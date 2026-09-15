@@ -25,7 +25,7 @@ Thermal sigmas: σ = sqrt(U) = sqrt(B / (8 pi ** 2))
 import abtem
 from ase.io import read as ase_read
 from py3DED import atoms, simulate
-from py3DED.io import read_atoms_from_zarr
+from py3DED.io import open_zarr_group, read_atoms_from_zarr
 
 import zarr
 import numpy as np
@@ -109,8 +109,18 @@ else:
 ### OUTPUT FOLDER, pathlib
 #    
 
+# cif_file and output_folder are resolved relative to the config file's own
+# directory (not the shell's cwd at invocation) when given as relative paths,
+# so this script works the same regardless of where it's launched from.
+config_dir = Path(call_arguments[1]).resolve().parent
+
 cif_file = Path(s['cif_file'])
+if not cif_file.is_absolute():
+    cif_file = config_dir / cif_file
+
 output_folder = Path(s['output_folder'])
+if not output_folder.is_absolute():
+    output_folder = config_dir / output_folder
 
 if 'ms' not in s['mode'].lower():
     s['box_size_x'] = 1
@@ -127,7 +137,7 @@ if s['transform_cell'] is not False:
 
 output_base = output_folder / output_subfolder
 
-output_base.mkdir()
+output_base.mkdir(parents=True)
 
 #
 ### LOGGING
@@ -202,6 +212,7 @@ structure_config.box = (s['box_size_x'],
                         s['box_size_y'],
                         s['thickness'])
 structure_config.vacancies = s['vacancies']
+structure_config.rotation_range = (s['rotation_min'], s['rotation_max'])
 
 print()
 
@@ -224,7 +235,7 @@ t.unit_cell[:] # unit cell size
 
 # write attributes / meta data
 print('Writing meta data as zarray attributes.')
-zarr_file_supercell = zarr.open( structure_config.store_path, mode='a')
+zarr_file_supercell = open_zarr_group(structure_config.store_path, mode='a')
 
 zarr_file_supercell.attrs['config'] = str(structure_config)
 zarr_file_supercell.attrs['cif_file'] = str(s['cif_file'])
@@ -235,15 +246,17 @@ zarr_file_supercell.attrs['rotation_axis_orientation'] = f"{s['rotation_axis_ori
 for k in 'box_size_x', 'box_size_y', 'thickness':
     zarr_file_supercell.attrs[k] = f'{s[k]:.3f} Angstrom'
 
-N_atoms = zarr_file_supercell.atom.shape[0]
+# item access, not attribute access: zarr 3.x (required by current abTEM) dropped
+# the v2 sugar that let a dataset be read as zarr_file_supercell.atom
+N_atoms = zarr_file_supercell['atom'].shape[0]
 zarr_file_supercell.attrs['N_atoms'] = N_atoms
 
 print('Zarray structure:')
 for name, content in zarr_file_supercell.arrays():
     print(f'|__ {name:20} {content.dtype.name:8}', content.shape)
 
-# no need to close zarr_file_supercell?
-del zarr_file_supercell    
+zarr_file_supercell.store.close()  # flushes a .zip store's central directory
+del zarr_file_supercell
 
 sep()
 
@@ -288,9 +301,8 @@ with open(settings_file, 'w') as fh:
     print('Settings written to:', settings_file)
 
 # copy CIF file
-source = Path(s['cif_file'])
-destination = output_base / source.name
-destination.write_bytes( source.read_bytes() )
+destination = output_base / cif_file.name
+destination.write_bytes( cif_file.read_bytes() )
 print('CIF file copied.')
 
 sep()
@@ -316,7 +328,7 @@ if 'ms' in s['mode'].lower():
     print(f'DONE. {duration/60:.2f} minutes')
 
     # write meta data
-    zarr_file_ms = zarr.open( output_file, mode='a')
+    zarr_file_ms = open_zarr_group(output_file, mode='a')
     for e in dir(run_config):
         if not e.startswith('_') and e not in ('ctx', 'unit_cell'):
             zarr_file_ms.attrs[e] = getattr(run_config, e)
@@ -327,6 +339,7 @@ if 'ms' in s['mode'].lower():
     print('Zarray structure:')
     for name, content in zarr_file_ms.arrays():
         print(f'|__ {name:20} {content.dtype.name:8}', content.shape)
+    zarr_file_ms.store.close()  # flushes a .zip store's central directory
 
 
 #####
@@ -348,7 +361,7 @@ if 'bw' in s['mode'].lower():
     print(f'DONE. {duration/60:.2f} minutes')
 
     # write meta data
-    zarr_file_bw = zarr.open( output_file, mode='a')
+    zarr_file_bw = open_zarr_group(output_file, mode='a')
     for e in dir(run_config):
         if not e.startswith('_') and e not in ('ctx', 'unit_cell'):
             zarr_file_bw.attrs[e] = getattr(run_config, e)
@@ -359,6 +372,7 @@ if 'bw' in s['mode'].lower():
     print('Zarray structure:')
     for name, content in zarr_file_bw.arrays():
         print(f'|__ {name:20} {content.dtype.name:8}', content.shape)
+    zarr_file_bw.store.close()  # flushes a .zip store's central directory
 
 # z = zarr.open( output_file, mode='r')
 # hkl = z.attrs['kwargs0']['miller_indices']
