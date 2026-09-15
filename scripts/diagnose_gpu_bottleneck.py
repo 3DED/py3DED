@@ -319,6 +319,68 @@ def main():
         except ImportError:
             pass
 
+    # The estimator-call logging above only samples pool state once, at the
+    # top of each rotation's generate_chunked_slices() call -- it cannot see
+    # what happens *during* that rotation's chunk-build/propagate loop. A
+    # fixed chunk_size (or a formula tuned only from that single snapshot)
+    # can look like it has headroom at the snapshot and still be much
+    # closer to the edge mid-loop. Trace real peak pool usage per rotation
+    # to answer that directly, reusing the pattern from abTEM's
+    # diagnose_scan_vram.py (same per-chunk pool_str(), capped to the first
+    # few chunks per rotation plus a peak summary at the end).
+    if args.device == "gpu":
+        try:
+            import cupy as _cp
+            from abtem.potentials.iam import _FieldBuilderFromAtoms
+
+            def _pool_str():
+                pool = _cp.get_default_memory_pool()
+                used = pool.used_bytes() / 1e9
+                free = pool.free_bytes() / 1e9
+                total = pool.total_bytes() / 1e9
+                cuda_free, cuda_total = _cp.cuda.Device().mem_info
+                return (f"pool used={used:.2f}GB free={free:.2f}GB total={total:.2f}GB "
+                        f"| cuda_free={cuda_free/1e9:.2f}GB")
+
+            _orig_generate_chunked_slices = _FieldBuilderFromAtoms.generate_chunked_slices
+            _rotation_counter = [0]
+            _max_trace_lines = 5
+
+            def _traced_generate_chunked_slices(self, first_slice=0, last_slice=None, chunk_size="auto"):
+                _rotation_counter[0] += 1
+                rotation = _rotation_counter[0]
+                chunk_i = 0
+                peak_used = 0.0
+                peak_line = ""
+                print(f"  [Rotation {rotation}] START generate_chunked_slices  {_pool_str()}", flush=True)
+
+                for chunk in _orig_generate_chunked_slices(
+                    self, first_slice=first_slice, last_slice=last_slice, chunk_size=chunk_size
+                ):
+                    chunk_i += 1
+                    verbose = chunk_i <= _max_trace_lines
+                    if verbose:
+                        print(f"    [Rotation {rotation} Chunk {chunk_i}] yield  {_pool_str()}", flush=True)
+                    elif chunk_i == _max_trace_lines + 1:
+                        print(f"    [Rotation {rotation}] ... suppressing further per-chunk lines ...", flush=True)
+                    yield chunk
+                    pool = _cp.get_default_memory_pool()
+                    used = pool.used_bytes() / 1e9
+                    if used > peak_used:
+                        peak_used = used
+                        peak_line = f"    [Rotation {rotation} Chunk {chunk_i}] post-propagate  {_pool_str()}"
+                    if verbose:
+                        print(f"    [Rotation {rotation} Chunk {chunk_i}] post-propagate  {_pool_str()}", flush=True)
+
+                print(f"  [Rotation {rotation}] END generate_chunked_slices  "
+                      f"({chunk_i} chunks total)  {_pool_str()}", flush=True)
+                print(f"  [Rotation {rotation}] PEAK pool_used this rotation: {peak_used:.2f}GB "
+                      f"({peak_line.strip() or 'n/a'})", flush=True)
+
+            _FieldBuilderFromAtoms.generate_chunked_slices = _traced_generate_chunked_slices
+        except ImportError:
+            pass
+
     if not _instrumented:
         from abtem.core import chunks as _abtem_chunks
         _orig_estimate_potential_chunk_size = _abtem_chunks.estimate_potential_chunk_size
