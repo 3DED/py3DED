@@ -30,6 +30,7 @@ Each run writes <label>_gpu_log.csv (raw nvidia-smi samples) and
 <label>_report.txt (the summary) into --out-dir (default: current directory).
 """
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -238,6 +239,13 @@ def main():
     parser.add_argument("--label", default="run")
     parser.add_argument("--out-dir", default=".")
     parser.add_argument("--gpu-poll-interval", type=float, default=0.2)
+    parser.add_argument("--abtem-benchmarks-dir", default="~/git/abTEM/benchmarks",
+                         help="path to abTEM's benchmarks/ dir, for the richer "
+                              "_chunk_instrumentation.py logging (cuda_free, "
+                              "pool_used, pool_free_cached, effective_free, "
+                              "budget) instead of just the resolved chunk size. "
+                              "Falls back to the plain resolved-size logging if "
+                              "not found.")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -265,16 +273,38 @@ def main():
     # conditions (live free VRAM, probe batch already resident) instead of
     # guessing from idle-period counts -- estimate_potential_chunk_size can
     # be called more than once per compute(), so log every call.
-    from abtem.core import chunks as _abtem_chunks
-    _orig_estimate_potential_chunk_size = _abtem_chunks.estimate_potential_chunk_size
+    #
+    # Prefer abTEM's _chunk_instrumentation.py (benchmarks/), which logs the
+    # full internal breakdown (cuda_free, pool_used, pool_free_cached,
+    # effective_free, budget) for both estimate_potential_chunk_size and
+    # estimate_scan_batch_size -- needed to see *why* a chunk size was
+    # picked, not just what it was (e.g. distinguishing a genuinely tight
+    # budget from CuPy's pool having permanently pinned cuda_free low; see
+    # abTEM commit c24b92fb). Falls back to a plain resolved-size print if
+    # that module isn't available (e.g. this script run against an abTEM
+    # checkout that doesn't have it, or on a machine without that repo).
+    _abtem_benchmarks_dir = os.path.expanduser(args.abtem_benchmarks_dir)
+    _instrumented = False
+    if os.path.isdir(_abtem_benchmarks_dir):
+        sys.path.insert(0, _abtem_benchmarks_dir)
+        try:
+            from _chunk_instrumentation import instrument_chunk_estimators
+            instrument_chunk_estimators()
+            _instrumented = True
+        except ImportError:
+            pass
 
-    def _logging_estimate_potential_chunk_size(gpts, device="cpu", dtype=None):
-        n = _orig_estimate_potential_chunk_size(gpts, device, dtype)
-        print(f"[{args.label}] potential chunk size resolved: {n} slices "
-              f"(gpts={gpts}, device={device})", flush=True)
-        return n
+    if not _instrumented:
+        from abtem.core import chunks as _abtem_chunks
+        _orig_estimate_potential_chunk_size = _abtem_chunks.estimate_potential_chunk_size
 
-    _abtem_chunks.estimate_potential_chunk_size = _logging_estimate_potential_chunk_size
+        def _logging_estimate_potential_chunk_size(gpts, device="cpu", dtype=None):
+            n = _orig_estimate_potential_chunk_size(gpts, device, dtype)
+            print(f"[{args.label}] potential chunk size resolved: {n} slices "
+                  f"(gpts={gpts}, device={device})", flush=True)
+            return n
+
+        _abtem_chunks.estimate_potential_chunk_size = _logging_estimate_potential_chunk_size
 
     checkpoints = []
     proc, log_file = start_gpu_logger(log_path, args.gpu_poll_interval)
