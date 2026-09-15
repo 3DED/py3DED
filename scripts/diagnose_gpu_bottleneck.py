@@ -172,22 +172,47 @@ def summarize(ts, util, mem, checkpoints, idle_threshold=10.0):
     lines.append(sparkline(util))
     lines.append("")
 
-    # idle-period analysis
-    is_idle = util < idle_threshold
+    # Idle-period analysis, restricted to the actual GPU compute phase.
+    # Everything before compute_started (CIF/atoms-ensemble construction,
+    # lazy graph building) is CPU-bound by design -- the GPU is correctly
+    # idle then, not stalled, so counting that stretch as an "idle period"
+    # conflates a genuine bottleneck (GPU waiting mid-compute) with normal
+    # host-side setup and inflates both the idle count and % of run idle.
+    compute_start_rel = next(
+        (cp_time - t0 for name, cp_time in checkpoints if name == "compute_started"),
+        None,
+    )
+    if compute_start_rel is not None:
+        mask = rel >= compute_start_rel
+        analysis_rel = rel[mask] - compute_start_rel
+        analysis_util = util[mask]
+        skipped = compute_start_rel
+    else:
+        # Backward compatible: no compute_started checkpoint recorded.
+        analysis_rel = rel
+        analysis_util = util
+        skipped = 0.0
+
+    if skipped > 0:
+        lines.append(f"(excluding {skipped:.2f}s of pre-compute setup -- CIF/atoms-ensemble "
+                     f"construction and lazy graph building -- from idle-period analysis below)")
+
+    is_idle = analysis_util < idle_threshold
     idle_runs = []
     run_start = None
     for i, flag in enumerate(is_idle):
         if flag and run_start is None:
             run_start = i
         elif not flag and run_start is not None:
-            idle_runs.append((rel[run_start], rel[i - 1] - rel[run_start]))
+            idle_runs.append((analysis_rel[run_start], analysis_rel[i - 1] - analysis_rel[run_start]))
             run_start = None
     if run_start is not None:
-        idle_runs.append((rel[run_start], rel[-1] - rel[run_start]))
+        idle_runs.append((analysis_rel[run_start], analysis_rel[-1] - analysis_rel[run_start]))
 
     total_idle = sum(d for _, d in idle_runs)
-    lines.append(f"Idle periods (<{idle_threshold:.0f}% util): {len(idle_runs)}, "
-                 f"total {total_idle:.2f}s ({100*total_idle/max(rel[-1],1e-9):.1f}% of run)")
+    compute_duration = max(analysis_rel[-1] if len(analysis_rel) else 0.0, 1e-9)
+    lines.append(f"Idle periods during compute (<{idle_threshold:.0f}% util): {len(idle_runs)}, "
+                 f"total {total_idle:.2f}s ({100*total_idle/compute_duration:.1f}% of compute time)")
     if idle_runs:
         longest = max(idle_runs, key=lambda r: r[1])
         lines.append(f"Longest idle streak: {longest[1]:.2f}s, starting at t={longest[0]:.2f}s")
@@ -337,6 +362,7 @@ def main():
         print(f"[{args.label}] multislice graph (lazy) built in {time.time()-t2:.3f}s", flush=True)
 
         t3 = time.time()
+        checkpoints.append(("compute_started", t3))
         result = lazy_result.compute()
         checkpoints.append(("compute_finished", time.time()))
         print(f"[{args.label}] .compute() finished in {time.time()-t3:.2f}s "
