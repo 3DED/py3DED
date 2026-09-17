@@ -1,10 +1,26 @@
 import os
+import warnings
 
 import xarray as xr
 import numpy as np
 import ase
 import dask
 import zarr
+
+# Reopening a .zip zarr store in "a" mode to add a few more attrs -- e.g.
+# run_py3DED.py adding runtime_seconds after abtem.to_zarr already wrote
+# array data and its own metadata -- appends a second zarr.json entry rather
+# than replacing the first; zarr/zipfile read the last one back on load, so
+# this is harmless, but zipfile.ZipFile warns every time it happens. The
+# warning fires from Python's zipfile module when the attrs are actually
+# written (attrs[key] = value) or the store is closed, both of which happen
+# in the caller well after open_zarr_group() has returned, so it can't be
+# scoped with a `with warnings.catch_warnings()` inside this function --
+# only a persistent filter covers the caller's later attrs/close calls too.
+# abtem.array.to_zarr's own zip writer silences this same message; match it.
+warnings.filterwarnings(
+    "ignore", message="Duplicate name:.*zarr.json", category=UserWarning
+)
 
 
 def atoms_to_xarray(atoms):

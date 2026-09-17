@@ -206,7 +206,7 @@ print( '\n'.join( [ f'{a:7}{e:10.5f}' for a, e in zip('a b c alpha beta gamma'.s
 
 structure_config = atoms.Config()
 structure_config.atoms = structure_UC
-structure_config.store_path = str(output_base / 'supercell.zarr')
+structure_config.store_path = str(output_base / 'supercell.zarr.zip')
 structure_config.rotation_axis = s['rotation_axis_orientation']
 structure_config.box = (s['box_size_x'],
                         s['box_size_y'],
@@ -314,7 +314,7 @@ sep()
 #####
 if 'ms' in s['mode'].lower():
     sep()
-    output_file = output_base.resolve() / 'ms.zarr'
+    output_file = output_base.resolve() / 'ms.zarr.zip'
     print('Output_file:', output_file)
     print('>>> Run multislice calculations ...')
     t0 = time()
@@ -347,7 +347,7 @@ if 'ms' in s['mode'].lower():
 #####
 if 'bw' in s['mode'].lower():
     sep()
-    output_file = output_base.resolve() / 'bw.zarr'
+    output_file = output_base.resolve() / 'bw.zarr.zip'
     print('Output_file:', output_file)
     print('>>> Run Bloch wave calculations ...')
     t0 = time()
