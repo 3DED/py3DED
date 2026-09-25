@@ -282,14 +282,13 @@ def get_x_angles(config: Config):
 
 def make_structure_factor(atoms, config: Config):
     thermal_sigma = parse_thermal_sigma(config.thermal_sigma)
-    
-    # In abTEM, the structure factor is calculated as the complex conjugate
-    # of the structure factor that is used in crystallography.
-    # This inconsistency will be resolved in future versions.
-    # This is a temporary workaround:    
-       
-    atoms.set_positions( -atoms.positions )
-    
+
+    # No position inversion: abTEM's StructureFactor now uses the
+    # crystallographic sign convention, exp(+2πi r·hkl) (abTEM 523d2ca1).
+    # Inverting positions here, the old workaround for the conjugated
+    # convention, would now conjugate the structure factors -- wrong for any
+    # non-centrosymmetric structure -- and it also mutated `atoms` in place,
+    # i.e. the caller's config.unit_cell.
     structure_factor = StructureFactor(
         atoms,
         g_max=config.g_max,
