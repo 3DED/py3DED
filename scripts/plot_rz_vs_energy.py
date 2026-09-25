@@ -64,6 +64,35 @@ def find_run_folder(result_folder: Path) -> Path:
     return candidates[-1]
 
 
+def bragg_r_z(data_bw, data_ms, tolerance=1e-6):
+    """Bragg R factor of rotation-integrated intensities (excl. 000), one per
+    (energy, thickness) -- per energy, identical to run_py3DED_compare2.py's
+    R_z for a single-energy run with scale=False and no averaging_depth.
+
+    The tolerance filter is applied per energy, as compare2 would when run on
+    each energy on its own: a reflection that is weak at one energy but not
+    at another only counts where it is above tolerance."""
+    if tolerance:
+        # strongest intensity along alpha, averaged by z, using BW as reference
+        max_bw = data_bw.mean(dim="z").max(dim="x_rotation")  # (Energy, hkl)
+        keep = max_bw > tolerance
+        any_keep = keep.any(dim="Energy").data
+        data_bw = data_bw.sel(hkl=any_keep)
+        data_ms = data_ms.sel(hkl=any_keep)
+        keep = keep.sel(hkl=any_keep)
+    else:
+        keep = True
+
+    int_bw = data_bw.sum(dim="x_rotation").where(keep)
+    int_ms = data_ms.sum(dim="x_rotation").where(keep)
+
+    # masked-out (NaN) reflections are skipped by the hkl sums
+    delta = np.abs(int_bw - int_ms)
+    return 100 * delta.drop_sel(hkl="0 0 0").sum(dim="hkl") / int_bw.drop_sel(
+        hkl="0 0 0"
+    ).sum(dim="hkl")
+
+
 def main(result_folder, g_max_limit=2.0, tolerance=1e-6):
     result_folder = find_run_folder(Path(result_folder))
 
@@ -98,21 +127,7 @@ def main(result_folder, g_max_limit=2.0, tolerance=1e-6):
     data_bw = data_bw.compute()
     data_ms = data_ms.compute()
 
-    if tolerance:
-        # strongest intensity along alpha, averaged by z, using BW as reference
-        max_bw = data_bw.mean(dim="z").max(dim="x_rotation").max(dim="Energy")
-        hkl_mask = max_bw.data > tolerance
-        data_bw = data_bw.sel(hkl=hkl_mask)
-        data_ms = data_ms.sel(hkl=hkl_mask)
-
-    int_bw = data_bw.sum(dim="x_rotation")
-    int_ms = data_ms.sum(dim="x_rotation")
-
-    # Bragg R factor based on intensities, one R factor per (energy, thickness)
-    delta = np.abs(int_bw - int_ms)
-    R_z = 100 * delta.drop_sel(hkl="0 0 0").sum(dim="hkl") / int_bw.drop_sel(
-        hkl="0 0 0"
-    ).sum(dim="hkl")
+    R_z = bragg_r_z(data_bw, data_ms, tolerance)
 
     energies = sorted(float(e) for e in R_z["Energy"].data)
 
