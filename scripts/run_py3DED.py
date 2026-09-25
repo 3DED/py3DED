@@ -97,6 +97,7 @@ else:
 "window_func": "hann",
 "g_max": 8.0,
 "use_wave_eq": true,
+"propagator": "paraxial",
 "device": "gpu",
 "num_workers": 1,
 "scheduler": "threads",

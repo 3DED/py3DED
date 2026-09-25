@@ -21,6 +21,7 @@ import ase
 import numpy as np
 from abtem.bloch import BlochWaves, StructureFactor
 from abtem.core.energy import energy2wavelength
+from abtem.multislice import FourierMultislice
 from abtem.rotation_series import (
     rotated_atoms_ensemble,
     rotation_series_orientation_matrices,
@@ -115,6 +116,17 @@ class Config(BaseConfig):
         The crystal centering to be used in the Bloch wave simulations. Either "P", "A", "B", "C", "I" or "F".
     use_wave_eq : bool, optional
         Use the version of the Bloch wave simulation derived from the wave equation.
+        Required for propagator="exact".
+    propagator : {'paraxial', 'exact'}, optional
+        The propagation model, applied to BOTH multislice and Bloch waves so the
+        two solve the same equation. "paraxial" (default, as before abTEM's exact
+        propagator became its default): multislice with the first-order (Fresnel)
+        propagator, FourierMultislice(order=1), and Bloch waves with use_wave_eq
+        as given. "exact": multislice with FourierMultislice(order="exact") and
+        Bloch waves with use_wave_eq="exact", its non-paraxial counterpart. The
+        two models differ roughly as wavelength**3, i.e. most at low energy.
+        Converging the exact Bloch waves needs sg_max large enough to include the
+        beams whose paraxial and exact excitation errors differ.
     occupancy : float, optional
         The occupancy as a fraction used in the Bloch wave simulations. This does NOT affect the multislice simulations.
     """
@@ -193,6 +205,10 @@ class Config(BaseConfig):
     use_wave_eq: bool = True
     occupancy: float = 1.0
 
+    # Both
+    # ----
+    propagator: str = "paraxial"
+
 
 def get_store_path(config: Config):
     """
@@ -270,6 +286,23 @@ def make_potential(config):
         projection=config.projection,
     )
     return potential
+
+
+def propagator_settings(config: Config) -> tuple:
+    """(multislice propagator order, Bloch-wave use_wave_eq) for
+    config.propagator -- matched pairs, so both sides solve the same equation."""
+    if config.propagator == "paraxial":
+        return 1, config.use_wave_eq
+    if config.propagator == "exact":
+        if not config.use_wave_eq:
+            raise ValueError(
+                'propagator="exact" requires use_wave_eq=True: the standard '
+                "(use_wave_eq=False) Bloch waves have no exact counterpart"
+            )
+        return "exact", "exact"
+    raise ValueError(
+        f'propagator must be "paraxial" or "exact", not {config.propagator!r}'
+    )
 
 
 def get_x_angles(config: Config):
@@ -358,7 +391,11 @@ def setup_multislice(config: Config, return_exit_wave=False):
         window_func=config.window_func,
     )
 
-    diffraction = pw.multislice(potential=potential, detectors=detector)
+    diffraction = pw.multislice(
+        potential=potential,
+        detectors=detector,
+        algorithm=FourierMultislice(order=propagator_settings(config)[0]),
+    )
 
     angles_deg = np.rad2deg(get_x_angles(config))
     orientation_matrices = rotation_series_orientation_matrices(
@@ -398,7 +435,7 @@ def get_bloch_waves(config: Config):
         structure_factor=structure_factor,
         energy=config.energy,
         sg_max=config.sg_max,
-        use_wave_eq=config.use_wave_eq,
+        use_wave_eq=propagator_settings(config)[1],
     )
     return bloch_waves
 
