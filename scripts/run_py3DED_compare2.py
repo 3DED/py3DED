@@ -13,7 +13,13 @@ import xarray
 
 # default settings
 setup_analysis = {
-    'scale':               'Hann',   # 'Hann' | '000' | 'Newton' | False
+    # WindowedPixelatedDetector (py3DED/detector.py) is now abTEM's own class,
+    # which auto-renormalizes MS intensities by the actual window's power gain
+    # at write time -- applying 'Hann' here on top would double-count that
+    # correction (confirmed: it roughly doubles Bragg R rather than improving
+    # it). Set to 'Hann'/'000'/'Newton' only when analyzing data written by
+    # something that does NOT already renormalize (e.g. pre-#1 zarr files).
+    'scale':               False,    # 'Hann' | '000' | 'Newton' | False
     'averaging_depth':     False,    # thickness-smoothing of intensities, depth in Å, e.g. 10.0
     'tolerance':           1e-6,     # ignore reflections with I < tolerance
     'g_max_limit':         2.0,      # ignore reflections with g_max > g_max_limit
@@ -68,7 +74,7 @@ else:
 # check files
 if ( file_bw and file_ms and
      file_bw.exists() and file_ms.exists() and
-     file_bw.name.endswith('.zarr') and file_ms.name.endswith('.zarr') ):
+     file_bw.name.endswith(('.zarr', '.zip')) and file_ms.name.endswith(('.zarr', '.zip')) ):
     s['bw_file'] = file_bw
     s['ms_file'] = file_ms
 else:
@@ -136,12 +142,13 @@ sep()
 # read data
 logger.info(file_bw)
 logger.info("Reading BW data ... ")
-data_bw = abtem.from_zarr(file_bw).to_data_array() #.compute()
+# abtem.from_zarr expects a str url (it calls .endswith(".zip") on it), not a Path
+data_bw = abtem.from_zarr(str(file_bw)).to_data_array() #.compute()
 logger.info("done.")
 logger.info("")
 logger.info(file_ms)
 logger.info("Reading MS data ... ")
-data_ms = abtem.from_zarr(file_ms).to_data_array() #.compute()
+data_ms = abtem.from_zarr(str(file_ms)).to_data_array() #.compute()
 logger.info("done.")
 logger.info("")
 
