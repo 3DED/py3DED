@@ -134,8 +134,15 @@ def bloch_paths(bw, thicknesses):
     out["new eig"] = asnumpy(
         bw.calculate_diffraction_patterns(thicknesses, return_complex=True, lazy=False).array
     )
+    # the module function with an eagerly built matrix, rather than
+    # BlochWaves.calculate_scattering_matrix, which fails on GPU before abTEM
+    # 42846a5b (it built the matrix lazily)
+    A_new = bw.calculate_structure_matrix(lazy=False)
     out["new expm"] = np.stack(
-        [asnumpy(bw.calculate_scattering_matrix(z))[:, i0] for z in thicknesses]
+        [asnumpy(dyn.calculate_scattering_matrix(
+            A=A_new, hkl=bw.hkl, cell=bw.cell, z=z, energy=bw.energy,
+            use_wave_eq=bw.use_wave_eq))[:, i0]
+         for z in thicknesses]
     )
     A_old = old_structure_matrix(use_wave_eq=bw.use_wave_eq, **args)
     out["old eig"] = asnumpy(
