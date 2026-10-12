@@ -269,7 +269,14 @@ def worst_from_csv(path, all_deg, zmin):
     import pandas as pd
 
     table = pd.read_csv(path, index_col=0, skipinitialspace=True)
-    z = table.columns.astype(float)
+    try:
+        z = table.columns.astype(float)
+    except (TypeError, ValueError):
+        raise SystemExit(
+            f"{path} has columns {list(table.columns)}, not thicknesses: it is not "
+            "compare2's Bragg_R_z_alpha.csv (rows alpha, columns z). Bragg_R_z.csv, "
+            "next to it, is the rotation-integrated R and cannot rank orientations."
+        ) from None
     r = (table.loc[:, z > zmin] if (z > zmin).any() else table).max(axis=1)
     alpha = np.asarray(r.index, dtype=float)
     if np.abs(alpha).max() > 1.5 * np.abs(all_deg).max() > 0:
