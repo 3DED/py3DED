@@ -11,12 +11,24 @@ M = (1 + g_z/K)^-1/2, which belongs only to the standard (use_wave_eq=False)
 form (fixed in abTEM c52f5ba3). This script separates the two candidate
 causes, the excitation-error form and the metric, frame by frame.
 
-Given a finished run folder (settings.json, the CIF file, supercell, ms and bw
-stores -- V2026.7 run folders work), it
+The source is either
 
-  1. computes R_z_alpha of the run's own ms vs bw stores, and picks the
-     --worst N orientations (largest R over z > --zmin), plus --controls M
-     well-behaved ones for comparison (or takes --angles explicitly);
+  - a finished run folder (settings.json, the CIF file, supercell, ms and bw
+    stores; V2026.7 run folders work), or
+  - the run's run_py3DED.py json, when that folder no longer exists. A new
+    folder is made as run_py3DED.py would (settings.json, CIF, supercell --
+    generated with today's code), and the article's BW is recomputed for the
+    whole rotation series (cheap; it gives the tolerance mask). Without the
+    article's MS, the orientations come from --angles, or from the article's
+    Bragg_R_z_alpha.csv with --alpha-csv. Pass the new folder, not the json,
+    on later calls, so nothing is regenerated.
+
+The script
+
+  1. ranks the orientations by R_z_alpha (largest R over z > --zmin), from
+     the run's own ms vs bw stores or from --alpha-csv, and picks the
+     --worst N of them, plus --controls M well-behaved ones for comparison
+     (or takes --angles explicitly);
   2. reruns just those orientations, from the run's own supercell:
 
        ms_paraxial    multislice, FourierMultislice(order=1)  (the article's MS)
@@ -32,7 +44,10 @@ stores -- V2026.7 run folders work), it
      each BW variant against the matching MS, plus two reproduction checks:
      bw_old_waveeq vs the run's bw store and ms_paraxial vs the run's ms store
      (both should be small; if not, the rerun does not reproduce the run, and
-     the rest is not comparable).
+     the rest is not comparable). From a json there is no run MS, and the run
+     BW is the same code as bw_old_waveeq, so these checks say nothing; check
+     instead that "bw_old_waveeq vs ms_paraxial" reproduces the article's
+     numbers for those orientations.
 
 How to read it: if bw_new_waveeq vs ms_paraxial is much better than
 bw_old_waveeq vs ms_paraxial, the metric was the problem. If bw_*_std agrees
@@ -53,6 +68,8 @@ GPU workstation, from the py3DED repo root:
     python scripts/rerun_worst_orientations.py <run folder> --worst 4 --controls 2 --exact
     python scripts/rerun_worst_orientations.py <run folder> --angles 12.5 37.0
     python scripts/rerun_worst_orientations.py <run folder> --select-only
+    python scripts/rerun_worst_orientations.py <run json> --alpha-csv Bragg_R_z_alpha.csv
+    python scripts/rerun_worst_orientations.py <run json> --angles 12.5 37.0
 
 Options:
     --precision      default float64 (the run's own setting with "run")
@@ -155,6 +172,22 @@ def pick_angles(worst, args):
     return np.array(sorted(set(float(a) for a in angles)))
 
 
+def choose_angles(worst, all_deg, args):
+    """--angles, or the --worst/--controls picks from the ranking; prints it."""
+    if args.angles:
+        angles = np.round(np.array(sorted(args.angles)), 4)
+        missing = [a for a in angles if a not in all_deg]
+        if missing:
+            raise SystemExit(f"{missing} are not orientations of this run: {all_deg}")
+    else:
+        angles = pick_angles(worst, args)
+    if worst is not None:
+        print(f"\nRun's R_z_alpha, max over z > {args.zmin:g} Å, worst first:")
+        for a, r in zip(worst["x_rotation"].data[:12], worst.data[:12]):
+            print(f"  {a:9.3f} deg  {r:7.2f} %{'   <- rerun' if a in angles else ''}")
+    return angles
+
+
 def select(data, labels):
     return data.sel(hkl=data["hkl"].isin(labels).data)
 
@@ -188,10 +221,75 @@ def compute(name, base_config, angles_deg, store: Path, args):
         simulate.get_x_angles = saved
 
 
+def prepare_from_config(json_path: Path, output_root):
+    """A run folder from a run_py3DED.py json, as run_py3DED.py builds it --
+    settings.json, the CIF file and the supercell -- but with no MS or BW run."""
+    from datetime import datetime
+    from json import dump, load as load_json
+
+    from ase.io import read as ase_read
+
+    from py3DED import atoms
+
+    s = load_json(open(json_path))
+    s.setdefault("transform_cell", False)
+    s.setdefault("vacancies", 0.0)
+    base = json_path.resolve().parent  # relative paths as run_py3DED.py
+    cif = Path(s["cif_file"])
+    cif = cif if cif.is_absolute() else base / cif
+    root = Path(output_root or s["output_folder"])
+    root = root if root.is_absolute() else base / root
+    folder = root / (f"{datetime.now():%Y%m%d-%H%M%S}_{cif.stem}_"
+                     f"{s['box_size_x']:.0f}x{s['box_size_y']:.0f}x{s['thickness']:.0f}_"
+                     f"{s['rotation_steps']:.0f}_worst")
+    folder.mkdir(parents=True)
+
+    unit_cell = ase_read(cif, format="cif")
+    if s["transform_cell"]:
+        unit_cell.set_cell(np.reshape(s["transform_cell"], (3, 3)), scale_atoms=True)
+    structure = atoms.Config()
+    structure.atoms = unit_cell
+    structure.store_path = str(folder / "supercell.zarr.zip")
+    structure.rotation_axis = s["rotation_axis_orientation"]
+    structure.box = (s["box_size_x"], s["box_size_y"], s["thickness"])
+    structure.vacancies = s["vacancies"]
+    structure.rotation_range = (s["rotation_min"], s["rotation_max"])
+    print(f"Generating the supercell in {folder} ...", flush=True)
+    atoms.run(structure)
+
+    (folder / cif.name).write_bytes(cif.read_bytes())
+    with open(folder / "settings.json", "w") as fh:
+        dump(s, fh, indent=2)
+    return folder
+
+
+def worst_from_csv(path, all_deg, zmin):
+    """The run's R_z_alpha ranking from its Bragg_R_z_alpha.csv
+    (run_py3DED_compare2.py): rows alpha [deg], columns z [Å]."""
+    import pandas as pd
+
+    table = pd.read_csv(path, index_col=0, skipinitialspace=True)
+    z = table.columns.astype(float)
+    r = (table.loc[:, z > zmin] if (z > zmin).any() else table).max(axis=1)
+    alpha = np.asarray(r.index, dtype=float)
+    if np.abs(alpha).max() > 1.5 * np.abs(all_deg).max() > 0:
+        alpha = np.deg2rad(alpha)  # compare2 converted degrees as if radians
+    nearest = np.abs(all_deg[None] - alpha[:, None]).argmin(axis=1)
+    if np.abs(all_deg[nearest] - alpha).max() > 1e-2:
+        raise SystemExit(f"the orientations in {path} are not this run's: {all_deg}")
+    worst = xarray.DataArray(r.to_numpy(), dims="x_rotation",
+                             coords={"x_rotation": all_deg[nearest]})
+    return worst.sortby(worst, ascending=False)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("run_folder")
+    p.add_argument("source", help="run folder, or a run_py3DED.py json config")
+    p.add_argument("--alpha-csv", help="the run's Bragg_R_z_alpha.csv, to pick the worst "
+                   "orientations when the folder has no ms store")
+    p.add_argument("--output-folder", help="for a json source: where to put the new run "
+                   "folder (default: the json's output_folder)")
     p.add_argument("--worst", type=int, default=5)
     p.add_argument("--controls", type=int, default=2)
     p.add_argument("--angles", type=float, nargs="+", help="orientations [deg] to rerun")
@@ -211,10 +309,16 @@ def main():
     if not hasattr(dyn, "_metric"):
         raise SystemExit("installed abTEM lacks the Bloch-wave metric fix (c52f5ba3)")
 
-    folder = Path(args.run_folder).resolve()
+    source = Path(args.source).resolve()
+    if source.suffix == ".json":
+        if not (args.angles or args.alpha_csv):
+            raise SystemExit("from a json, give --angles or --alpha-csv: without the "
+                             "article's MS there is nothing to rank orientations by")
+        folder = prepare_from_config(source, args.output_folder)
+        print(f"Next time, pass the folder instead of the json: {folder}")
+    else:
+        folder = source
     run_ms, run_bw = find_store(folder, "ms"), find_store(folder, "bw")
-    if run_ms is None or run_bw is None:
-        raise FileNotFoundError(f"need both ms and bw stores in {folder}")
 
     # the propagator/sg_max/... overrides of run_config_from_folder stay unset
     for name in ("propagator", "sg_max", "g_max"):
@@ -227,29 +331,35 @@ def main():
     print(f"{folder.name}: energy {config.energy}, {len(all_deg)} orientations, "
           f"sg_max {config.sg_max}, g_max {config.g_max}, precision {config.precision}, "
           f"device {config.device}")
+    if run_ms is None:
+        worst = worst_from_csv(args.alpha_csv, all_deg, args.zmin) if args.alpha_csv else None
+        if worst is None and not args.angles:
+            raise SystemExit(f"no ms store in {folder}: give --angles or --alpha-csv")
+        angles = choose_angles(worst, all_deg, args)
+        if args.select_only:
+            return
+        if run_bw is None:
+            # The article's BW over the whole series: cheap, and it gives the
+            # tolerance mask over all orientations, as compare2 builds it.
+            run_bw = folder / "bw.zarr.zip"
+            print("No bw store: computing the article's BW (use_wave_eq=True, pre-fix "
+                  "metric) for all orientations", flush=True)
+            compute("bw_old_waveeq", config, all_deg, run_bw, args)
+
     print("Reading the run's stores ...", flush=True)
     full_bw = load(run_bw, all_deg, args.g_max_limit).compute()
-    full_ms = load(run_ms, all_deg, args.g_max_limit).compute()
     # tolerance mask over the FULL rotation series, from BW, as compare2
     keep = full_bw.mean(dim="z").max(dim="x_rotation").max(dim="Energy") > args.tolerance
     print(f"  {int(keep.sum())} of {keep.size} reflections (g < {args.g_max_limit}) "
           f"above tolerance {args.tolerance:g}")
     labels = keep["hkl"].data[keep.data]
-    full_bw, full_ms = select(full_bw, labels), select(full_ms, labels)
-    worst = ranked(r_z_alpha(full_bw, full_ms), args.zmin)
-
-    if args.angles:
-        angles = np.round(np.array(sorted(args.angles)), 4)
-        missing = [a for a in angles if a not in all_deg]
-        if missing:
-            raise SystemExit(f"{missing} are not orientations of this run: {all_deg}")
-    else:
-        angles = pick_angles(worst, args)
-    print(f"\nRun's R_z_alpha, max over z > {args.zmin:g} Å, worst first:")
-    for a, r in zip(worst["x_rotation"].data[:12], worst.data[:12]):
-        print(f"  {a:9.3f} deg  {r:7.2f} %{'   <- rerun' if a in angles else ''}")
-    if args.select_only:
-        return
+    full_bw = select(full_bw, labels)
+    if run_ms is not None:
+        full_ms = select(load(run_ms, all_deg, args.g_max_limit).compute(), labels)
+        worst = ranked(r_z_alpha(full_bw, full_ms), args.zmin)
+        angles = choose_angles(worst, all_deg, args)
+        if args.select_only:
+            return
 
     out = folder / "worst_orientations"
     out.mkdir(exist_ok=True)
@@ -272,7 +382,9 @@ def main():
         compute(n, config, angles, stores[n], args)
 
     print("\nLoading and comparing ...", flush=True)
-    data = {"run_bw": full_bw.sel(x_rotation=angles), "run_ms": full_ms.sel(x_rotation=angles)}
+    data = {"run_bw": full_bw.sel(x_rotation=angles)}
+    if run_ms is not None:
+        data["run_ms"] = full_ms.sel(x_rotation=angles)
     for n, store in stores.items():  # also ones left by an earlier call
         if store.exists():
             data[n] = select(load(store, angles, args.g_max_limit), labels).compute()
@@ -328,8 +440,8 @@ def main():
             for label, r in curves.items():
                 c = r.sel(Energy=e, x_rotation=a).sortby("z")
                 ax.plot(c["z"], c, label=label, **styles[label])
-            ax.set_title(f"α = {a:g}°  (run: {float(worst.sel(x_rotation=a)):.1f} %)",
-                         fontsize=9)
+            run = "" if worst is None else f"  (run: {float(worst.sel(x_rotation=a)):.1f} %)"
+            ax.set_title(f"α = {a:g}°{run}", fontsize=9)
             ax.grid(alpha=0.3)
         for ax in axes.flat[len(angles):]:
             ax.axis("off")
