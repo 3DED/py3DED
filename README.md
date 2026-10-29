@@ -90,5 +90,5 @@ Multislice calculations of 451 orientations using the input files in `examples/S
 Multislice calculations of 16 orientations using the input files in `examples/convergence_test/Si_MS_boxsize/*.json` took between 2 minutes (`Si_box_25.json`) and 60 minutes (`Si_box_250.json`).
 
 ## Compatible *ab*TEM versions
-This branch requires the [`claude/3ded-tooling-upstream`](https://github.com/abTEM/abTEM/pull/384) branch of abTEM, which upstreams py3DED's crop/window, finite-crystal, and rotation-series tooling directly into abTEM. It is automatically installed with the above instructions. Once that PR merges to abTEM's `dev`, this pin should move to `dev` (or a released version) instead of a specific commit.
+This branch requires abTEM commit [`cabdb3ba`](https://github.com/abTEM/abTEM/commit/cabdb3bae71879f66bf21894f1756aefd1f30911), the head of [abTEM#644](https://github.com/abTEM/abTEM/pull/644). That PR is the top of a stack on [abTEM#384](https://github.com/abTEM/abTEM/pull/384), which upstreams py3DED's crop/window, finite-crystal and rotation-series tooling into abTEM; #644 adds the multislice speedups. It is installed automatically with the instructions above. Once the stack is merged into abTEM's `dev`, the pin should move to that merge commit or to a released version.
 

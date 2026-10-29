@@ -104,13 +104,17 @@ class old_metric_code:
     def __enter__(self):
         self._saved = (dyn.calculate_structure_matrix, dyn.calculate_dynamical_scattering)
 
+        # Later abTEM passes extra keywords. inversion_center only moves the
+        # origin, multiplying each amplitude by a phase (both calls drop it, so
+        # the two stay consistent and intensities are unchanged);
+        # overwrite_structure_matrix and solver only choose how to solve.
         def structure_matrix(structure_factor, hkl, hkl_selected, cell, energy, gpts,
-                             use_wave_eq=False):
+                             use_wave_eq=False, **_ignored):
             return old_structure_matrix(structure_factor, hkl, hkl_selected, cell,
                                         energy, gpts, use_wave_eq)
 
         def dynamical_scattering(structure_matrix, hkl, cell, energy, thicknesses,
-                                 use_wave_eq=False):
+                                 use_wave_eq=False, **_ignored):
             out = old_dynamical_scattering(structure_matrix, hkl, cell, energy,
                                            np.atleast_1d(thicknesses))
             return out if np.ndim(thicknesses) else out[0]
