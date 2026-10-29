@@ -59,8 +59,11 @@ print(datetime.now().strftime('%Y%m%d-%H%M%S'))
 if len(call_arguments) == 2:
     # folder provided
     folder = Path( call_arguments[1] )
-    file_ms = folder / "ms.zarr"
-    file_bw = folder / "bw.zarr"
+    # run_py3DED.py writes .zarr.zip stores; older runs wrote plain .zarr folders
+    file_ms, file_bw = [ next( (folder / f"{stem}{ext}" for ext in (".zarr.zip", ".zarr")
+                                if (folder / f"{stem}{ext}").exists()),
+                               folder / f"{stem}.zarr.zip" )
+                         for stem in ("ms", "bw") ]
 elif len(call_arguments) == 3:
     file_bw = Path( call_arguments[1] )
     file_ms = Path( call_arguments[2] )
@@ -84,7 +87,7 @@ else:
     print("""
     You can call the program in the following ways:
     
-    (1) Default folder structure with bw.zarr and ms.zarr:
+    (1) Default folder structure with bw.zarr.zip and ms.zarr.zip (or bw.zarr and ms.zarr):
     python run_py3DED_analyse "path/to/folder_with_zarr_files"
     
     (2) Example call specifying output files of Bloch wave and multislice runs:

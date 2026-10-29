@@ -107,9 +107,8 @@ for folder in "${folders[@]}"; do
     fi
 
     if [ -n "$ms_store" ] && [ -n "$bw_store" ]; then
-        # Explicit two-file form (bw, then ms), not the single-folder form --
-        # that one only ever looks for a literal "ms.zarr"/"bw.zarr" inside
-        # the folder, so it won't find a .zip store.
+        # Explicit two-file form (bw, then ms): the single-folder form only
+        # finds ms/bw.zarr.zip and ms/bw.zarr, not the older ms/bw.zip names.
         if "$PYTHON" "$COMPARE_SCRIPT" "$bw_store" "$ms_store" > "$LOG_DIR/${name}_compare2.log" 2>&1 < /dev/null; then
             compare_status="ok"
         else
